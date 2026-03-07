@@ -8,9 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnReset = document.getElementById('btn-reset');
 
     const brightnessInput = document.getElementById('img-brightness');
-    const waveForceInput = document.getElementById('wave-force');
     const waveIntensityInput = document.getElementById('wave-intensity');
-    const pollutionForceInput = document.getElementById('pollution-force');
     const pollutionIntensityInput = document.getElementById('pollution-intensity');
 
     // UI Controls for drawing
@@ -23,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolsPanel = document.getElementById('tools-panel');
     const btnAddFolder = document.getElementById('btn-add-folder');
     const zoneListContainer = document.getElementById('zone-list-container');
+    const btnPlaySim = document.getElementById('btn-play-sim');
 
     // Save & Load
     const btnSaveProject = document.getElementById('btn-save-project');
@@ -53,6 +52,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
     let pollutionState = { heatmapCanvas: null };
+
+    // Simulation Animation State
+    let simulationTime = 0.0;
+    let simulationInterval = null;
 
     // Zoom State
     let currentZoom = 1;
@@ -127,8 +130,6 @@ document.addEventListener('DOMContentLoaded', () => {
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
     if (pollutionIntensityInput) pollutionIntensityInput.addEventListener('input', renderCanvas);
-    if (waveForceInput) waveForceInput.addEventListener('input', updateSimulationAndRender);
-    if (pollutionForceInput) pollutionForceInput.addEventListener('input', updateSimulationAndRender);
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -145,8 +146,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     brightnessInput.value = data.adjustments.brightness || "100";
                     waveIntensityInput.value = data.adjustments.waveIntensity || "65";
                     if (pollutionIntensityInput) pollutionIntensityInput.value = data.adjustments.pollutionIntensity || "70";
-                    if (waveForceInput) waveForceInput.value = data.adjustments.waveForce || "30";
-                    if (pollutionForceInput) pollutionForceInput.value = data.adjustments.pollutionForce || "70";
                 }
 
                 isDrawing = false;
@@ -154,6 +153,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedZoneId = null;
                 mergeState.active = false;
                 mergeState.zone1Id = null;
+
+                if (simulationInterval) stopSim();
 
                 setTool('draw');
                 toolBtns.forEach(b => {
@@ -201,9 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 adjustments: {
                     brightness: brightnessInput.value,
                     waveIntensity: waveIntensityInput.value,
-                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70",
-                    waveForce: waveForceInput ? waveForceInput.value : "30",
-                    pollutionForce: pollutionForceInput ? pollutionForceInput.value : "70"
+                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70"
                 }
             };
 
@@ -323,8 +322,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 brightnessInput.value = "100";
                 waveIntensityInput.value = "65";
                 if (pollutionIntensityInput) pollutionIntensityInput.value = "70";
-                if (waveForceInput) waveForceInput.value = "30";
-                if (pollutionForceInput) pollutionForceInput.value = "70";
                 setTool('draw'); // Reset to draw tool
                 toolBtns.forEach(b => {
                     b.classList.remove('active');
@@ -336,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 canvas.height = currentImage.height;
                 fitCanvasToScreen();
 
+                if (simulationInterval) stopSim();
                 renderCanvas();
                 showCanvas();
                 updateControlsUI();
@@ -406,6 +404,20 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.setLineDash([10, 10]);
             ctx.stroke();
             ctx.setLineDash([]);
+
+            if (waveState.sourceLine.length > 1) {
+                const len = waveState.sourceLine.length;
+                const p1 = waveState.sourceLine[len - 2];
+                const p2 = waveState.sourceLine[len - 1];
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                ctx.beginPath();
+                ctx.moveTo(p2.x, p2.y);
+                ctx.lineTo(p2.x - 20 * Math.cos(angle - Math.PI / 6), p2.y - 20 * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(p2.x - 20 * Math.cos(angle + Math.PI / 6), p2.y - 20 * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fillStyle = '#00ffff';
+                ctx.fill();
+            }
         }
 
         // Draw current polygon
@@ -699,6 +711,28 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             btnClearWaves.classList.add('hidden');
         }
+    }
+
+    function stopSim() {
+        if (simulationInterval) clearInterval(simulationInterval);
+        simulationInterval = null;
+        if (btnPlaySim) btnPlaySim.classList.remove('active');
+        updateSimulationAndRender();
+    }
+
+    if (btnPlaySim) {
+        btnPlaySim.addEventListener('click', () => {
+            if (simulationInterval) {
+                stopSim(); // Pauses the simulation rendering in its current state
+            } else {
+                simulationTime = 0.0; // Restarts the visual flow
+                btnPlaySim.classList.add('active');
+                simulationInterval = setInterval(() => {
+                    simulationTime += 1.5; // Continue expanding infinitely
+                    updateSimulationAndRender();
+                }, 40); // 25fps for fluid continuous motion
+            }
+        });
     }
 
     if (btnAddFolder) {
@@ -1137,12 +1171,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 queue.push(i);
             }
         }
-
         if (queue.length === 0) return;
+
+        let bDX = 0, bDY = 0;
+        if (waveState.sourceLine.length > 1) {
+            const p1 = waveState.sourceLine[0];
+            const p2 = waveState.sourceLine[waveState.sourceLine.length - 1];
+            let dx = p2.x - p1.x;
+            let dy = p2.y - p1.y;
+            let dist = Math.hypot(dx, dy);
+            if (dist > 0) { bDX = dx / dist; bDY = dy / dist; }
+        }
+        waveState.boatDir = { dx: bDX, dy: bDY };
 
         let head = 0;
         let maxDist = 0;
-        const maxAllowedDist = waveForceInput ? parseInt(waveForceInput.value) : 30;
+        const maxAllowedDist = Math.max(1, simulationTime * 2.0); // Waves expand quickly
 
         function check(nIdx, nd, nx, ny) {
             if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
@@ -1186,11 +1230,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hue = ratio * 240; // 0=Red to 240=Blue
                 const rgb = hslToRgb(hue / 360, 1, 0.5);
 
+                const waveFade = Math.max(0, 1 - (d / 180));
+
                 heatImgData.data[i * 4] = rgb[0];
                 heatImgData.data[i * 4 + 1] = rgb[1];
                 heatImgData.data[i * 4 + 2] = rgb[2];
-                // Max opacity handled by globalAlpha via slider now
-                heatImgData.data[i * 4 + 3] = 255;
+                heatImgData.data[i * 4 + 3] = 255 * waveFade * (1 - ratio);
             }
         }
 
@@ -1301,23 +1346,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let head = 0;
         let maxDist = 0;
-        const maxAllowedDist = pollutionForceInput ? parseInt(pollutionForceInput.value) : 70;
+        const maxAllowedDist = Math.max(1, simulationTime);
 
-        function check(nIdx, nd, nx, ny) {
+        function check(nIdx, nd, nx, ny, fromX, fromY) {
             if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
                 if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
                     let localMaxDist = maxAllowedDist;
+                    let movPenalty = 1;
+
                     // Boost pollution propagation if traversing waves
                     if (waveState.grid && waveState.grid[nIdx] !== -1) {
                         const wDist = waveState.grid[nIdx];
                         const wMax = waveState.maxAllowedDist || 30;
                         const waveStrength = Math.max(0, 1 - (wDist / wMax));
+
+                        if (waveState.boatDir && (waveState.boatDir.dx !== 0 || waveState.boatDir.dy !== 0)) {
+                            let movDX = nx - fromX;
+                            let movDY = ny - fromY;
+                            let movLen = Math.hypot(movDX, movDY);
+                            if (movLen > 0) {
+                                movDX /= movLen; movDY /= movLen;
+                                let dot = movDX * waveState.boatDir.dx + movDY * waveState.boatDir.dy;
+                                let effect = dot * waveStrength;
+                                // Fast in boat direction, slow against boat direction
+                                movPenalty = effect > 0 ? (1 - 0.85 * effect) : (1 - 1.5 * effect);
+                            }
+                        }
+
                         // Up to triples the propagation distance in strong waves
                         localMaxDist += waveStrength * wMax * 2.0;
                     }
-                    if (nd <= localMaxDist) {
-                        grid[nIdx] = nd;
-                        if (nd > maxDist) maxDist = nd;
+
+                    let nextDist = nd + movPenalty;
+                    if (nextDist <= localMaxDist) {
+                        grid[nIdx] = nextDist;
+                        if (nextDist > maxDist) maxDist = nextDist;
                         queue.push(nIdx);
                     }
                 }
@@ -1331,10 +1394,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const cy = Math.floor(curr / cols);
             const cx = curr % cols;
 
-            check(curr - cols, d + 1, cx, cy - 1);
-            check(curr + cols, d + 1, cx, cy + 1);
-            check(curr - 1, d + 1, cx - 1, cy);
-            check(curr + 1, d + 1, cx + 1, cy);
+            check(curr - cols, d, cx, cy - 1, cx, cy);
+            check(curr + cols, d, cx, cy + 1, cx, cy);
+            check(curr - 1, d, cx - 1, cy, cx, cy);
+            check(curr + 1, d, cx + 1, cy, cx, cy);
         }
 
         // Generate heatmap visual
@@ -1357,11 +1420,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const hue = 60 + (ratio * 80); // 60 (Yellow) to 140 (Green)
                 const rgb = hslToRgb(hue / 360, 0.9, 0.6);
 
+                const fadeAlpha = Math.max(0, 1 - (d / 300)); // Polution will fade and "s'estomper" over distance
+
                 heatImgData.data[i * 4] = rgb[0];
                 heatImgData.data[i * 4 + 1] = rgb[1];
                 heatImgData.data[i * 4 + 2] = rgb[2];
-                // Max opacity handled by globalAlpha via slider now
-                heatImgData.data[i * 4 + 3] = 255;
+                heatImgData.data[i * 4 + 3] = 255 * fadeAlpha * (1 - ratio);
             }
         }
 
