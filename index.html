@@ -49,12 +49,27 @@
                     <input type="file" id="load-file-input" accept=".zip,.json" hidden>
                 </div>
                 <hr class="sidebar-divider" style="margin-top: 12px; margin-bottom: 8px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h2>Zones définies</h2>
-                    <button id="btn-add-folder" class="btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;"
-                        title="Créer un nouveau dossier">+ Dossier</button>
+                
+                <div class="sidebar-tabs" style="display: flex; gap: 8px; margin-bottom: 12px;">
+                    <button id="tab-zones" class="btn-secondary tab-btn active" style="flex: 1;">Zones</button>
+                    <button id="tab-boats" class="btn-secondary tab-btn" style="flex: 1;">Bateaux</button>
                 </div>
-                <div id="zone-list-container" class="zone-list"></div>
+
+                <div id="zones-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h2>Zones définies</h2>
+                        <button id="btn-add-folder" class="btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;"
+                            title="Créer un nouveau dossier">+ Dossier</button>
+                    </div>
+                    <div id="zone-list-container" class="zone-list"></div>
+                </div>
+
+                <div id="boats-section" class="hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h2>Trajets Bateaux</h2>
+                    </div>
+                    <div id="boat-list-container" class="zone-list"></div>
+                </div>
             </aside>
 
             <!-- Main Content Area -->

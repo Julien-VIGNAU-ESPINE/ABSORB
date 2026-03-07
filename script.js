@@ -23,6 +23,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const zoneListContainer = document.getElementById('zone-list-container');
     const btnPlaySim = document.getElementById('btn-play-sim');
 
+    // UI Tabs
+    const tabZones = document.getElementById('tab-zones');
+    const tabBoats = document.getElementById('tab-boats');
+    const zonesSection = document.getElementById('zones-section');
+    const boatsSection = document.getElementById('boats-section');
+    const boatListContainer = document.getElementById('boat-list-container');
+
     // Save & Load
     const btnSaveProject = document.getElementById('btn-save-project');
     const btnLoadProject = document.getElementById('btn-load-project');
@@ -52,6 +59,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
     let pollutionState = { heatmapCanvas: null };
+
+    // Boats State
+    let boatPaths = [];
+    let boatPathCounter = 1;
+    let selectedBoatId = null;
+    let activeTab = 'zones';
 
     // Simulation Animation State
     let simulationTime = 0.0;
@@ -85,8 +98,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
         updateControlsUI();
         updateZoneListUI();
+        updateBoatListUI();
         renderCanvas();
     }
+
+    // Tabs functionality
+    tabZones.addEventListener('click', () => {
+        activeTab = 'zones';
+        tabZones.classList.add('active');
+        tabBoats.classList.remove('active');
+        zonesSection.classList.remove('hidden');
+        boatsSection.classList.add('hidden');
+    });
+
+    tabBoats.addEventListener('click', () => {
+        activeTab = 'boats';
+        tabBoats.classList.add('active');
+        tabZones.classList.remove('active');
+        boatsSection.classList.remove('hidden');
+        zonesSection.classList.add('hidden');
+    });
 
     // --- Drag and Drop Handling ---
 
@@ -140,6 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 folders = data.folders || [];
                 zoneCounter = data.zoneCounter || 1;
                 folderCounter = data.folderCounter || 1;
+
+                boatPaths = data.boatPaths || [];
+                boatPathCounter = data.boatPathCounter || 1;
+
                 waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
 
                 if (data.adjustments) {
@@ -196,6 +231,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 folders: folders,
                 zoneCounter: zoneCounter,
                 folderCounter: folderCounter,
+                boatPaths: boatPaths,
+                boatPathCounter: boatPathCounter,
                 waveState: {
                     sourceLine: waveState.sourceLine
                 },
@@ -269,7 +306,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Core Updates ---
     function updateSimulationAndRender() {
-        if (waveState.sourceLine && waveState.sourceLine.length > 2) {
+        const visibleBoats = boatPaths.filter(b => b.visible);
+        if ((waveState.sourceLine && waveState.sourceLine.length > 2) || visibleBoats.length > 0) {
             runWaveSimulation();
         } else {
             waveState.heatmapCanvas = null;
@@ -393,6 +431,36 @@ document.addEventListener('DOMContentLoaded', () => {
             drawPolygon(zone.points, fillColor, strokeColor, true, lineWidth);
         });
 
+        // Draw saved boats
+        boatPaths.forEach(boat => {
+            if (!boat.visible) return;
+            ctx.beginPath();
+            ctx.moveTo(boat.points[0].x, boat.points[0].y);
+            for (let i = 1; i < boat.points.length; i++) {
+                ctx.lineTo(boat.points[i].x, boat.points[i].y);
+            }
+
+            ctx.strokeStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
+            ctx.lineWidth = (boat.id === selectedBoatId) ? 8 : 6;
+            ctx.setLineDash([10, 10]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            if (boat.points.length > 1) {
+                const len = boat.points.length;
+                const p1 = boat.points[len - 2];
+                const p2 = boat.points[len - 1];
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                ctx.beginPath();
+                ctx.moveTo(p2.x, p2.y);
+                ctx.lineTo(p2.x - 20 * Math.cos(angle - Math.PI / 6), p2.y - 20 * Math.sin(angle - Math.PI / 6));
+                ctx.lineTo(p2.x - 20 * Math.cos(angle + Math.PI / 6), p2.y - 20 * Math.sin(angle + Math.PI / 6));
+                ctx.closePath();
+                ctx.fillStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
+                ctx.fill();
+            }
+        });
+
         if (waveState.sourceLine && waveState.sourceLine.length > 0) {
             ctx.beginPath();
             ctx.moveTo(waveState.sourceLine[0].x, waveState.sourceLine[0].y);
@@ -404,20 +472,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.setLineDash([10, 10]);
             ctx.stroke();
             ctx.setLineDash([]);
-
-            if (waveState.sourceLine.length > 1) {
-                const len = waveState.sourceLine.length;
-                const p1 = waveState.sourceLine[len - 2];
-                const p2 = waveState.sourceLine[len - 1];
-                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                ctx.beginPath();
-                ctx.moveTo(p2.x, p2.y);
-                ctx.lineTo(p2.x - 20 * Math.cos(angle - Math.PI / 6), p2.y - 20 * Math.sin(angle - Math.PI / 6));
-                ctx.lineTo(p2.x - 20 * Math.cos(angle + Math.PI / 6), p2.y - 20 * Math.sin(angle + Math.PI / 6));
-                ctx.closePath();
-                ctx.fillStyle = '#00ffff';
-                ctx.fill();
-            }
         }
 
         // Draw current polygon
@@ -667,6 +721,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentTool === 'wave' && waveState.isDrawingSource) {
             waveState.isDrawingSource = false;
             if (waveState.sourceLine.length > 2) {
+                let bDX = 0, bDY = 0;
+                const p1 = waveState.sourceLine[0];
+                const p2 = waveState.sourceLine[waveState.sourceLine.length - 1];
+                let dx = p2.x - p1.x;
+                let dy = p2.y - p1.y;
+                let dist = Math.hypot(dx, dy);
+                if (dist > 0) { bDX = dx / dist; bDY = dy / dist; }
+
+                boatPaths.push({
+                    id: Date.now(),
+                    title: `Trajet ${boatPathCounter++}`,
+                    points: [...waveState.sourceLine],
+                    dx: bDX,
+                    dy: bDY,
+                    visible: true,
+                    isRunning: false,
+                    time: 0
+                });
+
+                waveState.sourceLine = [];
+                updateBoatListUI();
                 runWaveSimulation();
             } else {
                 waveState.sourceLine = [];
@@ -717,6 +792,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (simulationInterval) clearInterval(simulationInterval);
         simulationInterval = null;
         if (btnPlaySim) btnPlaySim.classList.remove('active');
+        boatPaths.forEach(b => b.isRunning = false);
+        updateBoatListUI();
         updateSimulationAndRender();
     }
 
@@ -726,9 +803,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 stopSim(); // Pauses the simulation rendering in its current state
             } else {
                 simulationTime = 0.0; // Restarts the visual flow
+                boatPaths.forEach((b, idx) => {
+                    b.isRunning = true;
+                    b.time = -idx * 150.0; // Staggered start time
+                });
+                updateBoatListUI();
                 btnPlaySim.classList.add('active');
                 simulationInterval = setInterval(() => {
                     simulationTime += 1.5; // Continue expanding infinitely
+                    boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
                     updateSimulationAndRender();
                 }, 40); // 25fps for fluid continuous motion
             }
@@ -975,6 +1058,179 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function createBoatPathDOM(boat, index) {
+        const el = document.createElement('div');
+        const isSelected = boat.id === selectedBoatId;
+        el.className = `zone-item ${isSelected ? 'selected' : ''}`;
+        el.setAttribute('data-id', boat.id);
+
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', index);
+            setTimeout(() => el.classList.add('dragging'), 0);
+        });
+        el.addEventListener('dragend', () => {
+            el.classList.remove('dragging');
+        });
+
+        el.onclick = (e) => {
+            if (e.target.closest('button') || e.target.tagName === 'INPUT') return;
+            selectedBoatId = boat.id;
+            updateBoatListUI();
+            renderCanvas();
+        };
+
+        const header = document.createElement('div');
+        header.className = 'zone-item-header';
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.display = 'flex';
+        leftGroup.style.alignItems = 'center';
+        leftGroup.style.gap = '8px';
+
+        const btnToggleVis = document.createElement('button');
+        btnToggleVis.className = 'btn-toggle-folder';
+        btnToggleVis.style.background = 'none';
+        btnToggleVis.style.border = 'none';
+        btnToggleVis.style.color = 'inherit';
+        btnToggleVis.style.cursor = 'pointer';
+        btnToggleVis.innerHTML = boat.visible
+            ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`
+            : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.5"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+
+        btnToggleVis.onclick = (e) => {
+            e.stopPropagation();
+            boat.visible = !boat.visible;
+            updateBoatListUI();
+            runWaveSimulation();
+            updateSimulationAndRender();
+        };
+
+        const btnPlayBoat = document.createElement('button');
+        btnPlayBoat.className = 'btn-toggle-folder';
+        btnPlayBoat.style.background = 'none';
+        btnPlayBoat.style.border = 'none';
+        btnPlayBoat.style.color = boat.isRunning ? '#4cd137' : 'inherit';
+        btnPlayBoat.style.cursor = 'pointer';
+        btnPlayBoat.innerHTML = boat.isRunning
+            ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`
+            : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+
+        btnPlayBoat.onclick = (e) => {
+            e.stopPropagation();
+            boat.isRunning = !boat.isRunning;
+            if (boat.isRunning) {
+                if (boat.time === undefined || boat.time < 0) boat.time = 0.1;
+                if (!simulationInterval) {
+                    btnPlaySim.classList.add('active');
+                    simulationInterval = setInterval(() => {
+                        simulationTime += 1.5;
+                        boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
+                        updateSimulationAndRender();
+                    }, 40);
+                }
+            }
+            updateBoatListUI();
+            updateSimulationAndRender();
+        };
+
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'folder-title-input';
+        titleInput.value = boat.title;
+        titleInput.onclick = (e) => e.stopPropagation();
+        titleInput.onblur = (e) => { boat.title = e.target.value; };
+        titleInput.onchange = (e) => { boat.title = e.target.value; };
+
+        leftGroup.appendChild(btnToggleVis);
+        leftGroup.appendChild(btnPlayBoat);
+        leftGroup.appendChild(titleInput);
+
+        const btnDel = document.createElement('button');
+        btnDel.className = 'btn-delete';
+        btnDel.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        btnDel.onclick = (e) => {
+            e.stopPropagation();
+            boatPaths = boatPaths.filter(b => b.id !== boat.id);
+            if (selectedBoatId === boat.id) selectedBoatId = null;
+            updateBoatListUI();
+            runWaveSimulation();
+            updateSimulationAndRender();
+        };
+
+        header.appendChild(leftGroup);
+        header.appendChild(btnDel);
+        el.appendChild(header);
+
+        return el;
+    }
+
+    function updateBoatListUI() {
+        boatListContainer.innerHTML = '';
+        if (boatPaths.length === 0) {
+            boatListContainer.innerHTML = '<p style="color: var(--clr-text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">Aucun trajet de bateau défini.</p>';
+            return;
+        }
+
+        boatPaths.forEach((boat, index) => {
+            boatListContainer.appendChild(createBoatPathDOM(boat, index));
+        });
+    }
+
+    boatListContainer.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        const afterElement = getDragAfterElement(boatListContainer, e.clientY);
+        const dragging = document.querySelector('.dragging');
+        if (dragging && dragging.closest('#boat-list-container')) {
+            if (afterElement == null) {
+                boatListContainer.appendChild(dragging);
+            } else {
+                boatListContainer.insertBefore(dragging, afterElement);
+            }
+        }
+    });
+
+    boatListContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const draggedIndex = parseInt(e.dataTransfer.getData('text/plain'));
+        if (!isNaN(draggedIndex)) {
+            // Rebuild array based on DOM order
+            const newOrder = [];
+            const items = [...boatListContainer.querySelectorAll('.zone-item')];
+            // Since we know the items correspond to boatPaths logic, we match by title input val or just reorder array elements by reading their state. 
+            // A safer way is to find original id from DOM, but let's just use the index stored earlier.
+            // Actually let's just iterate over DOM to find title inputs, wait finding by ID is better.
+            // But we didn't store ID in DOM. Let's fix that!
+        }
+
+        // Simpler implementation: Rebuild array from DOM order based on titles if we want, or just wait. 
+        // Let's attach data-id to the element in createBoatPathDOM!
+        const items = [...boatListContainer.querySelectorAll('.zone-item')];
+        const newPaths = [];
+        items.forEach(item => {
+            const id = parseInt(item.getAttribute('data-id'));
+            const boat = boatPaths.find(b => b.id === id);
+            if (boat) newPaths.push(boat);
+        });
+        if (newPaths.length === boatPaths.length) {
+            boatPaths = newPaths;
+        }
+        updateSimulationAndRender();
+    });
+
+    function getDragAfterElement(container, y) {
+        const draggableElements = [...container.querySelectorAll('.zone-item:not(.dragging)')];
+        return draggableElements.reduce((closest, child) => {
+            const box = child.getBoundingClientRect();
+            const offset = y - box.top - box.height / 2;
+            if (offset < 0 && offset > closest.offset) {
+                return { offset: offset, element: child };
+            } else {
+                return closest;
+            }
+        }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
     // --- Controls ---
 
     btnFinishZone.addEventListener('click', () => {
@@ -1144,72 +1400,173 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Draw source line on mask to find initial positions
-        offCtx.resetTransform();
-        offCtx.clearRect(0, 0, cols, rows); // all transparent
-        offCtx.fillStyle = '#000000'; // black bg
-        offCtx.fillRect(0, 0, cols, rows);
-        offCtx.scale(1 / cellSize, 1 / cellSize);
+        // Draw all active boat paths on mask to find initial positions sequentially
+        const visibleBoats = boatPaths.filter(b => b.visible);
+        waveState.boatList = visibleBoats.map(b => ({ dx: b.dx, dy: b.dy }));
 
-        offCtx.beginPath();
-        offCtx.moveTo(waveState.sourceLine[0].x, waveState.sourceLine[0].y);
-        for (let i = 1; i < waveState.sourceLine.length; i++) {
-            offCtx.lineTo(waveState.sourceLine[i].x, waveState.sourceLine[i].y);
-        }
-        offCtx.strokeStyle = '#ffffff';
-        offCtx.lineWidth = cellSize * 2;
-        offCtx.lineCap = 'round';
-        offCtx.lineJoin = 'round';
-        offCtx.stroke();
+        const globalGrid = new Float32Array(cols * rows).fill(-1);
+        const sourceBoatGrid = new Int32Array(cols * rows).fill(-1);
+        let globalMaxDist = 1;
 
-        const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
-        const queue = [];
+        // Process each boat sequentially based on simulationTime
+        visibleBoats.forEach((boat, bIdx) => {
+            let localTime = boat.time || 0;
+            if (localTime <= 0) return; // Boat hasn't launched yet
 
-        for (let i = 0; i < cols * rows; i++) {
-            if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
-                grid[i] = 0;
-                queue.push(i);
+            offCtx.resetTransform();
+            offCtx.clearRect(0, 0, cols, rows);
+            offCtx.fillStyle = '#000000';
+            offCtx.fillRect(0, 0, cols, rows);
+            offCtx.scale(1 / cellSize, 1 / cellSize);
+
+            if (boat.points.length > 1) {
+                let boatSpeed = 3.5; // travel speed
+
+                let totalDist = 0;
+                let distances = [];
+                for (let i = 0; i < boat.points.length - 1; i++) {
+                    let dx = boat.points[i + 1].x - boat.points[i].x;
+                    let dy = boat.points[i + 1].y - boat.points[i].y;
+                    let d = Math.hypot(dx, dy);
+                    distances.push({ d, dx: dx / d, dy: dy / d });
+                    totalDist += d;
+                }
+
+                if (totalDist > 0) {
+                    let unmodTimeTravel = localTime * boatSpeed;
+                    let currentTravel = unmodTimeTravel % totalDist;
+                    let trailLength = 80; // Wake length trailing behind boat
+                    let startTravel = currentTravel - trailLength;
+
+                    let segmentsToDraw = [];
+                    if (startTravel < 0) {
+                        segmentsToDraw.push({ start: totalDist + startTravel, end: totalDist });
+                        segmentsToDraw.push({ start: 0, end: currentTravel });
+                    } else {
+                        segmentsToDraw.push({ start: startTravel, end: currentTravel });
+                    }
+
+                    offCtx.beginPath();
+                    let headPx = boat.points[0].x;
+                    let headPy = boat.points[0].y;
+                    let headDx = 0;
+                    let headDy = 0;
+
+                    for (let pass of segmentsToDraw) {
+                        let traversed = 0;
+                        let started = false;
+
+                        for (let i = 0; i < boat.points.length - 1; i++) {
+                            let seg = distances[i];
+                            let segStart = traversed;
+                            let segEnd = traversed + seg.d;
+
+                            let overlapStart = Math.max(pass.start, segStart);
+                            let overlapEnd = Math.min(pass.end, segEnd);
+
+                            if (overlapStart < overlapEnd) {
+                                let t1 = overlapStart - segStart;
+                                let t2 = overlapEnd - segStart;
+
+                                let p1x = boat.points[i].x + seg.dx * t1;
+                                let p1y = boat.points[i].y + seg.dy * t1;
+
+                                let p2x = boat.points[i].x + seg.dx * t2;
+                                let p2y = boat.points[i].y + seg.dy * t2;
+
+                                if (!started) {
+                                    offCtx.moveTo(p1x, p1y);
+                                    started = true;
+                                }
+                                offCtx.lineTo(p2x, p2y);
+
+                                // If this is close to the head
+                                if (Math.abs(overlapEnd - currentTravel) < 0.001) {
+                                    headPx = p2x;
+                                    headPy = p2y;
+                                    headDx = seg.dx;
+                                    headDy = seg.dy;
+                                }
+                            }
+                            traversed = segEnd;
+                        }
+                    }
+
+                    offCtx.strokeStyle = '#ffffff';
+                    offCtx.fillStyle = '#ffffff';
+                    offCtx.lineWidth = cellSize * 2;
+                    offCtx.lineCap = 'round';
+                    offCtx.lineJoin = 'round';
+                    offCtx.stroke();
+
+                    // Emphasize the head
+                    offCtx.beginPath();
+                    offCtx.arc(headPx, headPy, cellSize * 1.5, 0, Math.PI * 2);
+                    offCtx.fill();
+
+                    // Update dynamic head direction so pollutants drag locally
+                    waveState.boatList[bIdx] = { dx: headDx, dy: headDy };
+                }
+            } else if (boat.points.length === 1) {
+                offCtx.beginPath();
+                offCtx.arc(boat.points[0].x, boat.points[0].y, cellSize * 2, 0, Math.PI * 2);
+                offCtx.fillStyle = '#ffffff';
+                offCtx.fill();
             }
-        }
-        if (queue.length === 0) return;
 
-        let bDX = 0, bDY = 0;
-        if (waveState.sourceLine.length > 1) {
-            const p1 = waveState.sourceLine[0];
-            const p2 = waveState.sourceLine[waveState.sourceLine.length - 1];
-            let dx = p2.x - p1.x;
-            let dy = p2.y - p1.y;
-            let dist = Math.hypot(dx, dy);
-            if (dist > 0) { bDX = dx / dist; bDY = dy / dist; }
-        }
-        waveState.boatDir = { dx: bDX, dy: bDY };
+            const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
+            const queue = [];
+            const localGrid = new Float32Array(cols * rows).fill(-1);
 
-        let head = 0;
-        let maxDist = 0;
-        const maxAllowedDist = Math.max(1, simulationTime * 2.0); // Waves expand quickly
-
-        function check(nIdx, nd, nx, ny) {
-            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                if (obstacles[nIdx] === 0 && grid[nIdx] === -1 && nd <= maxAllowedDist) {
-                    grid[nIdx] = nd;
-                    if (nd > maxDist) maxDist = nd;
-                    queue.push(nIdx);
+            for (let i = 0; i < cols * rows; i++) {
+                if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
+                    localGrid[i] = 0;
+                    queue.push(i);
                 }
             }
-        }
 
-        // BFS distance calculation
-        while (head < queue.length) {
-            const curr = queue[head++];
-            const d = grid[curr];
-            const cy = Math.floor(curr / cols);
-            const cx = curr % cols;
+            if (queue.length === 0) return;
 
-            check(curr - cols, d + 1, cx, cy - 1);
-            check(curr + cols, d + 1, cx, cy + 1);
-            check(curr - 1, d + 1, cx - 1, cy);
-            check(curr + 1, d + 1, cx + 1, cy);
-        }
+            let head = 0;
+            // The wave expands organically up to a certain distance from the boat trace
+            // We use a constant but large maxAllowedDist so the wake stays visible behind it
+            let maxAllowedDist = 60;
+            let localMaxDist = 0;
+
+            function check(nIdx, nd, nx, ny) {
+                if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                    if (obstacles[nIdx] === 0 && localGrid[nIdx] === -1 && nd <= maxAllowedDist) {
+                        localGrid[nIdx] = nd;
+                        if (nd > localMaxDist) localMaxDist = nd;
+                        queue.push(nIdx);
+                    }
+                }
+            }
+
+            while (head < queue.length) {
+                const curr = queue[head++];
+                const d = localGrid[curr];
+                const cy = Math.floor(curr / cols);
+                const cx = curr % cols;
+
+                check(curr - cols, d + 1, cx, cy - 1);
+                check(curr + cols, d + 1, cx, cy + 1);
+                check(curr - 1, d + 1, cx - 1, cy);
+                check(curr + 1, d + 1, cx + 1, cy);
+            }
+
+            // Merge into global grid
+            for (let i = 0; i < cols * rows; i++) {
+                let ld = localGrid[i];
+                if (ld !== -1) {
+                    if (globalGrid[i] === -1 || ld < globalGrid[i]) {
+                        globalGrid[i] = ld;
+                        sourceBoatGrid[i] = bIdx;
+                        if (ld > globalMaxDist) globalMaxDist = ld;
+                    }
+                }
+            }
+        });
 
         // Generate heatmap visual
         const heatCanvas = document.createElement('canvas');
@@ -1221,10 +1578,12 @@ document.addEventListener('DOMContentLoaded', () => {
         offCtx.clearRect(0, 0, cols, rows);
         const heatImgData = offCtx.createImageData(cols, rows);
 
+        let hasData = false;
         for (let i = 0; i < cols * rows; i++) {
-            const d = grid[i];
+            const d = globalGrid[i];
             if (d >= 0 && obstacles[i] === 0) {
-                let ratio = d / Math.max(1, maxDist);
+                hasData = true;
+                let ratio = d / Math.max(1, globalMaxDist);
                 // Curve slightly to emphasize red/high impact zones
                 ratio = Math.pow(ratio, 0.8);
                 const hue = ratio * 240; // 0=Red to 240=Blue
@@ -1239,6 +1598,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        if (!hasData) {
+            waveState.heatmapCanvas = null;
+            waveState.grid = null;
+            return;
+        }
+
         offCtx.putImageData(heatImgData, 0, 0);
 
         hctx.imageSmoothingEnabled = true;
@@ -1247,8 +1612,9 @@ document.addEventListener('DOMContentLoaded', () => {
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
 
         waveState.heatmapCanvas = heatCanvas;
-        waveState.grid = grid;
-        waveState.maxAllowedDist = maxAllowedDist;
+        waveState.grid = globalGrid;
+        waveState.sourceBoatGrid = sourceBoatGrid;
+        waveState.maxAllowedDist = globalMaxDist;
     }
 
     function runPollutionSimulation() {
@@ -1339,18 +1705,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
-        
+
         // Feed pollution source continuously
         for (let i = 0; i < numCells; i++) {
             if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
-                density[i] = Math.min(1.0, density[i] + 0.1); 
+                density[i] = Math.min(1.0, density[i] + 0.1);
             }
         }
 
         const wGrid = waveState.grid;
         const wMax = waveState.maxAllowedDist || 1;
-        let bDX = waveState.boatDir ? waveState.boatDir.dx : 0;
-        let bDY = waveState.boatDir ? waveState.boatDir.dy : 0;
 
         const vxField = new Float32Array(numCells);
         const vyField = new Float32Array(numCells);
@@ -1360,32 +1724,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (let x = 1; x < cols - 1; x++) {
                     let i = y * cols + x;
                     if (obstacles[i] === 1) continue;
-                    
+
                     let d = wGrid[i];
                     if (d !== -1) {
                         let waveStrength = Math.max(0, 1 - (d / wMax));
                         waveStrength = waveStrength * waveStrength; // falloff
-                        
+
                         if (waveStrength > 0.01) {
                             let left = wGrid[i - 1] !== -1 ? wGrid[i - 1] : d;
                             let right = wGrid[i + 1] !== -1 ? wGrid[i + 1] : d;
                             let up = wGrid[i - cols] !== -1 ? wGrid[i - cols] : d;
                             let down = wGrid[i + cols] !== -1 ? wGrid[i + cols] : d;
-                            
-                            let dx = right - left;
-                            let dy = down - up;
-                            let len = Math.hypot(dx, dy);
-                            
+
+                            let gradX = right - left;
+                            let gradY = down - up;
+                            let len = Math.hypot(gradX, gradY);
+
                             if (len > 0) {
-                                dx /= len; dy /= len;
+                                gradX /= len; gradY /= len;
                             }
-                            
+
+                            let bDX = 0, bDY = 0;
+                            if (waveState.sourceBoatGrid && waveState.sourceBoatGrid[i] !== -1) {
+                                let bIdx = waveState.sourceBoatGrid[i];
+                                if (waveState.boatList && waveState.boatList[bIdx]) {
+                                    bDX = waveState.boatList[bIdx].dx;
+                                    bDY = waveState.boatList[bIdx].dy;
+                                }
+                            }
+
                             // turbulence
-                            let turbulentX = -dy * Math.sin(d * 0.15 + simulationTime * 0.3);
-                            let turbulentY = dx * Math.cos(d * 0.15 + simulationTime * 0.3);
-                            
-                            vxField[i] = (dx * 1.0 + bDX * 2.5 + turbulentX * 1.5) * waveStrength;
-                            vyField[i] = (dy * 1.0 + bDY * 2.5 + turbulentY * 1.5) * waveStrength;
+                            let turbulentX = -gradY * Math.sin(d * 0.15 + simulationTime * 0.3);
+                            let turbulentY = gradX * Math.cos(d * 0.15 + simulationTime * 0.3);
+
+                            vxField[i] = (gradX * 0.8 + bDX * 5.0 + turbulentX * 1.2) * waveStrength;
+                            vyField[i] = (gradY * 0.8 + bDY * 5.0 + turbulentY * 1.2) * waveStrength;
                         }
                     }
                 }
@@ -1399,9 +1772,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 let i = y * cols + x;
                 if (obstacles[i] === 1) continue;
                 let sumX = 0, sumY = 0, c = 0;
-                for(let oy = -1; oy <= 1; oy++) {
-                    for(let ox = -1; ox <= 1; ox++) {
-                        let ni = (y+oy)*cols + (x+ox);
+                for (let oy = -1; oy <= 1; oy++) {
+                    for (let ox = -1; ox <= 1; ox++) {
+                        let ni = (y + oy) * cols + (x + ox);
                         if (obstacles[ni] === 0) {
                             sumX += vxField[ni];
                             sumY += vyField[ni];
@@ -1424,32 +1797,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vx = smoothVx[i];
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
-                
-                let speedScale = 1.5; 
+
+                let speedScale = 1.5;
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
-                
+
                 srcX = Math.max(0, Math.min(cols - 1.001, srcX));
                 srcY = Math.max(0, Math.min(rows - 1.001, srcY));
-                
+
                 let x0 = Math.floor(srcX);
                 let x1 = x0 + 1;
                 let y0 = Math.floor(srcY);
                 let y1 = y0 + 1;
                 let tx = srcX - x0;
                 let ty = srcY - y0;
-                
+
                 let d00 = density[y0 * cols + x0];
                 let d10 = density[y0 * cols + x1];
                 let d01 = density[y1 * cols + x0];
                 let d11 = density[y1 * cols + x1];
-                
-                let interp = 
+
+                let interp =
                     d00 * (1 - tx) * (1 - ty) +
                     d10 * tx * (1 - ty) +
                     d01 * (1 - tx) * ty +
                     d11 * tx * ty;
-                    
+
                 let diffuse = 0;
                 if (vMag > 0.05) {
                     let sumD = 0; let countD = 0;
@@ -1466,21 +1839,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     diffuse = interp;
                 }
-                
+
                 let mixRate = Math.min(1.0, vMag * 0.3);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
-                
+
                 // pollution slightly evaporates over time
                 finalD *= 0.998;
                 if (finalD < 0.005) finalD = 0;
-                
+
                 newDensity[i] = finalD;
                 if (finalD > maxDensity) maxDensity = finalD;
             }
         }
 
         for (let i = 0; i < numCells; i++) {
-             density[i] = newDensity[i];
+            density[i] = newDensity[i];
         }
 
         const heatCanvas = document.createElement('canvas');
@@ -1497,12 +1870,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (d > 0 && obstacles[i] === 0) {
                 let val = d / Math.max(0.5, maxDensity);
                 val = Math.min(1.0, val);
-                
+
                 const hue = 60 + ((1.0 - val) * 80); // Peak is 60 (yellow), fades to 140 (green)
                 const rgb = hslToRgb(hue / 360, 0.9, 0.6);
-                
+
                 let alpha = Math.min(1.0, val * 2.0);
-                
+
                 heatImgData.data[i * 4] = rgb[0];
                 heatImgData.data[i * 4 + 1] = rgb[1];
                 heatImgData.data[i * 4 + 2] = rgb[2];
