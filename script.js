@@ -1,0 +1,857 @@
+document.addEventListener('DOMContentLoaded', () => {
+    // UI Elements
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('file-input');
+    const canvasContainer = document.getElementById('canvas-container');
+    const canvas = document.getElementById('port-canvas');
+    const ctx = canvas.getContext('2d');
+    const btnReset = document.getElementById('btn-reset');
+
+    // Image Adjustments
+    const brightnessInput = document.getElementById('img-brightness');
+    const waveIntensityInput = document.getElementById('wave-intensity');
+
+    // UI Controls for drawing
+    const instructionText = document.getElementById('instruction-text');
+    const btnFinishZone = document.getElementById('btn-finish-zone');
+    const btnCancelZone = document.getElementById('btn-cancel-zone');
+    const btnClearWaves = document.getElementById('btn-clear-waves');
+    const toolBtns = document.querySelectorAll('.tool-btn');
+    const sidebarPanel = document.getElementById('sidebar-panel');
+    const zoneListContainer = document.getElementById('zone-list-container');
+
+    // Save & Load
+    const btnSaveProject = document.getElementById('btn-save-project');
+    const btnLoadProject = document.getElementById('btn-load-project');
+    const loadFileInput = document.getElementById('load-file-input');
+
+    // Types definition
+    const zoneTypes = {
+        'default': { label: 'Non défini', color: 'rgba(0, 102, 204, 0.3)', border: 'rgba(0, 102, 204, 0.8)' },
+        'bateaux': { label: 'Bateaux', color: 'rgba(231, 76, 60, 0.3)', border: 'rgba(231, 76, 60, 0.8)' },
+        'ponton': { label: 'Ponton', color: 'rgba(149, 165, 166, 0.3)', border: 'rgba(149, 165, 166, 0.8)' },
+        'terre': { label: 'Terre', color: 'rgba(46, 204, 113, 0.3)', border: 'rgba(46, 204, 113, 0.8)' },
+        'eau': { label: 'Eau', color: 'rgba(52, 152, 219, 0.3)', border: 'rgba(52, 152, 219, 0.8)' }
+    };
+
+    // State Variables
+    let currentImage = null;
+    let zones = [];
+    let currentPolygon = [];
+    let isDrawing = false;
+    let selectedZoneId = null;
+    let zoneCounter = 1;
+    let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
+    let mergeState = { active: false, zone1Id: null };
+    let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
+
+    // --- Toolbar Setup ---
+    toolBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            toolBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            setTool(btn.getAttribute('data-tool'));
+        });
+    });
+
+    function setTool(tool) {
+        currentTool = tool;
+
+        // Reset intermediate states
+        isDrawing = false;
+        currentPolygon = [];
+
+        mergeState.active = (tool === 'merge');
+        mergeState.zone1Id = null;
+
+        waveState.active = (tool === 'wave');
+        waveState.isDrawingSource = false;
+
+        updateControlsUI();
+        updateZoneListUI();
+        renderCanvas();
+    }
+
+    // --- Drag and Drop Handling ---
+
+    // Prevent default browser behavior for drag events
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, preventDefaults, false);
+        // Also prevent defaults on the body to avoid accidental browser navigation if missed
+        document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    // Highlight upload zone on drag
+    ['dragenter', 'dragover'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => {
+            uploadZone.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        uploadZone.addEventListener(eventName, () => {
+            uploadZone.classList.remove('dragover');
+        }, false);
+    });
+
+    // Handle dropped files
+    uploadZone.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        handleFiles(files);
+    }, false);
+
+    // Handle file input selection (click)
+    fileInput.addEventListener('change', function () {
+        handleFiles(this.files);
+    });
+
+    // Handle Image Adjustments
+    brightnessInput.addEventListener('input', renderCanvas);
+    waveIntensityInput.addEventListener('input', renderCanvas);
+
+    // Save & Load Event Listeners
+    if (btnSaveProject) {
+        btnSaveProject.addEventListener('click', () => {
+            if (!currentImage) return alert("Rien à sauvegarder.");
+
+            const data = {
+                imageSrc: currentImage.src,
+                zones: zones,
+                zoneCounter: zoneCounter,
+                waveState: {
+                    sourceLine: waveState.sourceLine
+                },
+                adjustments: {
+                    brightness: brightnessInput.value,
+                    waveIntensity: waveIntensityInput.value
+                }
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
+            const downloadNode = document.createElement('a');
+            downloadNode.setAttribute("href", dataStr);
+            downloadNode.setAttribute("download", "projet_port.json");
+            document.body.appendChild(downloadNode);
+            downloadNode.click();
+            downloadNode.remove();
+        });
+    }
+
+    if (btnLoadProject) {
+        btnLoadProject.addEventListener('click', () => loadFileInput.click());
+        loadFileInput.addEventListener('change', function () {
+            if (this.files.length === 0) return;
+            const file = this.files[0];
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.imageSrc) {
+                        const img = new Image();
+                        img.onload = () => {
+                            currentImage = img;
+                            zones = data.zones || [];
+                            zoneCounter = data.zoneCounter || 1;
+                            waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
+
+                            if (data.adjustments) {
+                                brightnessInput.value = data.adjustments.brightness || "100";
+                                waveIntensityInput.value = data.adjustments.waveIntensity || "65";
+                            }
+
+                            isDrawing = false;
+                            currentPolygon = [];
+                            selectedZoneId = null;
+                            mergeState.active = false;
+                            mergeState.zone1Id = null;
+
+                            setTool('draw');
+                            toolBtns.forEach(b => {
+                                b.classList.remove('active');
+                                if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
+                            });
+
+                            updateSimulationAndRender();
+                            showCanvas();
+                            updateControlsUI();
+                            loadFileInput.value = '';
+                        };
+                        img.src = data.imageSrc;
+                    }
+                } catch (err) {
+                    alert("Fichier de projet invalide.");
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
+    // --- Core Updates ---
+    function updateSimulationAndRender() {
+        if (waveState.sourceLine && waveState.sourceLine.length > 2) {
+            runWaveSimulation();
+        } else {
+            waveState.heatmapCanvas = null;
+        }
+        renderCanvas();
+    }
+
+    // --- File Processing ---
+
+    function handleFiles(files) {
+        if (files.length === 0) return;
+
+        const file = files[0];
+
+        // Ensure it's an image
+        if (!file.type.match('image.*')) {
+            alert('Veuillez sélectionner une image valide (PNG, JPG).');
+            return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                currentImage = img;
+                zones = [];
+                currentPolygon = [];
+                isDrawing = false;
+                selectedZoneId = null;
+                zoneCounter = 1;
+                brightnessInput.value = "100";
+                waveIntensityInput.value = "65";
+                setTool('draw'); // Reset to draw tool
+                toolBtns.forEach(b => {
+                    b.classList.remove('active');
+                    if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
+                });
+                renderCanvas();
+                showCanvas();
+                updateControlsUI();
+            };
+            img.src = e.target.result;
+        };
+
+        reader.readAsDataURL(file);
+    }
+
+    // --- Canvas Rendering ---
+
+    function renderCanvas() {
+        if (!currentImage) return;
+
+        // For this calculator, we want the canvas to match the image dimensions intrinsically
+        // but we use CSS to scale it visually to fit the container.
+        // This is important because later drawing logic (cells) needs to map to image pixels.
+
+        canvas.width = currentImage.width;
+        canvas.height = currentImage.height;
+
+        // Clear canvas and draw image
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const brightness = brightnessInput.value;
+        ctx.filter = `brightness(${brightness}%)`;
+
+        ctx.drawImage(currentImage, 0, 0);
+
+        ctx.filter = 'none';
+
+        if (waveState.heatmapCanvas) {
+            ctx.globalAlpha = waveIntensityInput.value / 100;
+            ctx.drawImage(waveState.heatmapCanvas, 0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+        }
+
+        // Draw saved zones
+        zones.forEach(zone => {
+            const zType = zoneTypes[zone.type] || zoneTypes['default'];
+            const fillColor = zType.color;
+            let strokeColor = zType.border;
+            let lineWidth = 2;
+
+            if (zone.id === selectedZoneId) {
+                lineWidth = 4;
+            }
+            if (mergeState.active && zone.id === mergeState.zone1Id) {
+                lineWidth = 4;
+                strokeColor = '#f39c12';
+            }
+
+            drawPolygon(zone.points, fillColor, strokeColor, true, lineWidth);
+        });
+
+        if (waveState.sourceLine && waveState.sourceLine.length > 0) {
+            ctx.beginPath();
+            ctx.moveTo(waveState.sourceLine[0].x, waveState.sourceLine[0].y);
+            for (let i = 1; i < waveState.sourceLine.length; i++) {
+                ctx.lineTo(waveState.sourceLine[i].x, waveState.sourceLine[i].y);
+            }
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = 6;
+            ctx.setLineDash([10, 10]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // Draw current polygon
+        if (currentPolygon.length > 0) {
+            drawPolygon(currentPolygon, 'rgba(255, 165, 0, 0.3)', 'rgba(255, 165, 0, 0.8)', false, 2);
+
+            // Draw points
+            currentPolygon.forEach(point => {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 4, 0, 2 * Math.PI);
+                ctx.fillStyle = 'rgba(255, 165, 0, 1)';
+                ctx.fill();
+            });
+        }
+    }
+
+    function drawPolygon(points, fillColor, strokeColor, closePath = true, lineWidth = 2) {
+        if (points.length === 0) return;
+
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+
+        if (closePath && points.length > 2) {
+            ctx.closePath();
+            ctx.fillStyle = fillColor;
+            ctx.fill();
+        }
+
+        ctx.lineWidth = lineWidth;
+        ctx.strokeStyle = strokeColor;
+        ctx.stroke();
+    }
+
+    // --- UI State Switching ---
+
+    function showCanvas() {
+        uploadZone.style.opacity = '0';
+        uploadZone.style.pointerEvents = 'none';
+
+        canvasContainer.classList.remove('hidden');
+        sidebarPanel.classList.remove('hidden');
+        updateZoneListUI();
+    }
+
+    function showUpload() {
+        currentImage = null;
+        zones = [];
+        currentPolygon = [];
+        isDrawing = false;
+        selectedZoneId = null;
+        zoneCounter = 1;
+        zoneCounter = 1;
+        setTool('draw'); // Reset to default tool
+        toolBtns.forEach(b => {
+            b.classList.remove('active');
+            if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
+        });
+
+        fileInput.value = ''; // Reset file input
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        canvasContainer.classList.add('hidden');
+        sidebarPanel.classList.add('hidden');
+
+        uploadZone.style.opacity = '1';
+        uploadZone.style.pointerEvents = 'auto';
+    }
+
+    // --- Canvas Events for Drawing ---
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (!currentImage) return;
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        if (currentTool === 'wave') {
+            waveState.isDrawingSource = true;
+            waveState.sourceLine = [{ x, y }];
+            waveState.heatmapCanvas = null; // reset visual
+            renderCanvas();
+            return;
+        }
+
+        if (currentTool === 'erase') {
+            const clickedZoneId = getZoneAt(x, y);
+            if (clickedZoneId) {
+                zones = zones.filter(z => z.id !== clickedZoneId);
+                if (selectedZoneId === clickedZoneId) selectedZoneId = null;
+                updateZoneListUI();
+                updateSimulationAndRender();
+            }
+            return;
+        }
+
+        if (currentTool === 'merge') {
+            const clickedZoneId = getZoneAt(x, y);
+            if (clickedZoneId) {
+                handleZoneSelectionForMerge(clickedZoneId);
+            }
+            return;
+        }
+
+        if (currentTool === 'draw') {
+            if (!isDrawing) {
+                isDrawing = true;
+                currentPolygon = [];
+                updateControlsUI();
+            }
+            currentPolygon.push({ x, y });
+            renderCanvas();
+        }
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        if (currentTool === 'wave' && waveState.isDrawingSource) {
+            waveState.sourceLine.push({ x, y });
+            renderCanvas();
+            return;
+        }
+
+        if (currentTool === 'draw' && isDrawing && currentPolygon.length > 0) {
+            // Redraw canvas and line to cursor
+            renderCanvas();
+            ctx.beginPath();
+            const lastPoint = currentPolygon[currentPolygon.length - 1];
+            ctx.moveTo(lastPoint.x, lastPoint.y);
+            ctx.lineTo(x, y);
+            ctx.strokeStyle = 'rgba(255, 165, 0, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
+    });
+
+    canvas.addEventListener('mouseup', handleWaveMouseUp);
+    canvas.addEventListener('mouseleave', handleWaveMouseUp);
+
+    function handleWaveMouseUp(e) {
+        if (currentTool === 'wave' && waveState.isDrawingSource) {
+            waveState.isDrawingSource = false;
+            if (waveState.sourceLine.length > 2) {
+                runWaveSimulation();
+            } else {
+                waveState.sourceLine = [];
+            }
+            renderCanvas();
+            updateControlsUI();
+        }
+    }
+
+    function updateControlsUI() {
+        if (currentTool === 'draw') {
+            if (isDrawing) {
+                instructionText.innerText = "Tracez les contours. Cliquez sur 'Terminer' pour fermer.";
+                btnFinishZone.classList.remove('hidden');
+                btnCancelZone.classList.remove('hidden');
+            } else {
+                instructionText.innerText = "Mode Dessin: Cliquez pour tracer une zone.";
+                btnFinishZone.classList.add('hidden');
+                btnCancelZone.classList.add('hidden');
+            }
+        } else if (currentTool === 'merge') {
+            if (mergeState.zone1Id) {
+                instructionText.innerText = "Mode Fusion: Sélectionnez la deuxième zone.";
+            } else {
+                instructionText.innerText = "Mode Fusion: Sélectionnez la première zone.";
+            }
+            btnFinishZone.classList.add('hidden');
+            btnCancelZone.classList.remove('hidden');
+        } else if (currentTool === 'wave') {
+            instructionText.innerText = "Mode Vagues: Dessinez l'entrée d'eau (glissez-déposez).";
+            btnFinishZone.classList.add('hidden');
+            btnCancelZone.classList.remove('hidden');
+        } else if (currentTool === 'erase') {
+            instructionText.innerText = "Mode Effaceur: Cliquez sur une zone pour la supprimer.";
+            btnFinishZone.classList.add('hidden');
+            btnCancelZone.classList.add('hidden');
+        }
+
+        // Only show Clear Waves if we have heatmap
+        if (waveState.heatmapCanvas) {
+            btnClearWaves.classList.remove('hidden');
+        } else {
+            btnClearWaves.classList.add('hidden');
+        }
+    }
+
+    function updateZoneListUI() {
+        zoneListContainer.innerHTML = '';
+        if (zones.length === 0) {
+            zoneListContainer.innerHTML = '<p style="color: var(--clr-text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">Aucune zone définie.</p>';
+            return;
+        }
+
+        zones.forEach(zone => {
+            const el = document.createElement('div');
+            const isSelected = zone.id === selectedZoneId;
+            const isMergeTarget = mergeState.active && zone.id === mergeState.zone1Id;
+            el.className = `zone-item ${isSelected ? 'selected' : ''} ${isMergeTarget ? 'merge-target' : ''}`;
+            el.onclick = (e) => {
+                if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                    if (mergeState.active) {
+                        handleZoneSelectionForMerge(zone.id);
+                    } else {
+                        selectedZoneId = zone.id;
+                        updateZoneListUI();
+                        renderCanvas();
+                    }
+                }
+            };
+
+            const header = document.createElement('div');
+            header.className = 'zone-item-header';
+
+            const title = document.createElement('span');
+            title.textContent = zone.title;
+
+            const btnDel = document.createElement('button');
+            btnDel.className = 'btn-delete';
+            btnDel.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+            btnDel.onclick = () => {
+                zones = zones.filter(z => z.id !== zone.id);
+                if (selectedZoneId === zone.id) selectedZoneId = null;
+                if (mergeState.zone1Id === zone.id) {
+                    mergeState.active = false;
+                    mergeState.zone1Id = null;
+                    updateControlsUI();
+                }
+                updateZoneListUI();
+                updateSimulationAndRender();
+            };
+
+            header.appendChild(title);
+            header.appendChild(btnDel);
+
+            const select = document.createElement('select');
+            select.className = 'zone-select';
+            Object.keys(zoneTypes).forEach(key => {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = zoneTypes[key].label;
+                if (zone.type === key) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            select.onchange = (e) => {
+                zone.type = e.target.value;
+                updateSimulationAndRender();
+            };
+
+            el.appendChild(header);
+            el.appendChild(select);
+
+            zoneListContainer.appendChild(el);
+        });
+    }
+
+    // --- Controls ---
+
+    btnFinishZone.addEventListener('click', () => {
+        if (currentPolygon.length > 2) {
+            const newZone = {
+                id: Date.now(),
+                title: `Zone ${zoneCounter++}`,
+                type: 'terre',
+                points: [...currentPolygon]
+            };
+            zones.push(newZone);
+            selectedZoneId = newZone.id;
+        } else {
+            alert("Une zone doit avoir au moins 3 points.");
+        }
+        currentPolygon = [];
+        isDrawing = false;
+        updateSimulationAndRender();
+        updateControlsUI();
+        updateZoneListUI();
+    });
+    btnCancelZone.addEventListener('click', () => {
+        if (currentTool === 'merge') {
+            mergeState.zone1Id = null;
+        }
+        if (currentTool === 'wave') {
+            waveState.sourceLine = [];
+            waveState.heatmapCanvas = null;
+        }
+        if (currentTool === 'draw') {
+            currentPolygon = [];
+            isDrawing = false;
+        }
+        renderCanvas();
+        updateControlsUI();
+        updateZoneListUI();
+    });
+
+    if (btnClearWaves) {
+        btnClearWaves.addEventListener('click', () => {
+            waveState.sourceLine = [];
+            waveState.heatmapCanvas = null;
+            renderCanvas();
+            updateControlsUI();
+        });
+    }
+
+    btnReset.addEventListener('click', showUpload);
+
+    function getZoneAt(x, y) {
+        for (let i = zones.length - 1; i >= 0; i--) {
+            const zone = zones[i];
+            if (zone.points.length < 3) continue;
+            ctx.beginPath();
+            ctx.moveTo(zone.points[0].x, zone.points[0].y);
+            for (let j = 1; j < zone.points.length; j++) {
+                ctx.lineTo(zone.points[j].x, zone.points[j].y);
+            }
+            ctx.closePath();
+            if (ctx.isPointInPath(x, y)) {
+                return zone.id;
+            }
+        }
+        return null;
+    }
+
+    function attemptMerge(z1Id, z2Id) {
+        const z1 = zones.find(z => z.id === z1Id);
+        const z2 = zones.find(z => z.id === z2Id);
+        if (!z1 || !z2) return false;
+
+        if (z1.type !== z2.type) {
+            alert("Les zones doivent être de la même catégorie pour être fusionnées.");
+            return false;
+        }
+
+        const points1 = z1.points.map(p => [p.x, p.y]);
+        const points2 = z2.points.map(p => [p.x, p.y]);
+
+        const poly1 = { regions: [points1], inverted: false };
+        const poly2 = { regions: [points2], inverted: false };
+
+        const union = PolyBool.union(poly1, poly2);
+        if (union.regions.length > 0) {
+            const intersect = PolyBool.intersect(poly1, poly2);
+            if (intersect.regions.length === 0 && union.regions.length > 1) {
+                alert("Les zones doivent se toucher ou se superposer.");
+                return false;
+            }
+            z1.points = union.regions[0].map(pt => ({ x: pt[0], y: pt[1] }));
+            zones = zones.filter(z => z.id !== z2.id);
+            selectedZoneId = z1.id;
+            return true;
+        }
+        return false;
+    }
+
+    function handleZoneSelectionForMerge(zoneId) {
+        if (!mergeState.zone1Id) {
+            mergeState.zone1Id = zoneId;
+        } else if (mergeState.zone1Id !== zoneId) {
+            attemptMerge(mergeState.zone1Id, zoneId);
+            mergeState.active = false;
+            mergeState.zone1Id = null;
+        }
+        updateControlsUI();
+        updateZoneListUI();
+        updateSimulationAndRender();
+    }
+
+    function runWaveSimulation() {
+        // Use a 6px grid for decent resolution and good performance
+        const cellSize = 6;
+        const cols = Math.ceil(canvas.width / cellSize);
+        const rows = Math.ceil(canvas.height / cellSize);
+
+        const grid = new Float32Array(cols * rows).fill(-1);
+        const obstacles = new Uint8Array(cols * rows);
+
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = cols;
+        offCanvas.height = rows;
+        const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Draw obstacles mask
+        offCtx.fillStyle = '#000000'; // Black = Obstacle globally
+        offCtx.fillRect(0, 0, cols, rows);
+        offCtx.scale(1 / cellSize, 1 / cellSize);
+
+        // 1. Les zones explicitement définies comme 'Eau' sont navigables (espace de propagation)
+        zones.forEach(zone => {
+            if (zone.type === 'eau') {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#ffffff'; // White = Walkable
+                offCtx.fill();
+            }
+        });
+
+        // 2. Les autres zones (terre, bateaux, pontons) bloquent l'eau (obstacles dans l'eau)
+        zones.forEach(zone => {
+            if (zone.type !== 'eau') {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#000000'; // Black = Obstacle
+                offCtx.fill();
+            }
+        });
+
+        const maskData = offCtx.getImageData(0, 0, cols, rows).data;
+        for (let i = 0; i < cols * rows; i++) {
+            // Read RED channel
+            if (maskData[i * 4] < 128) {
+                obstacles[i] = 1;
+            }
+        }
+
+        // Draw source line on mask to find initial positions
+        offCtx.resetTransform();
+        offCtx.clearRect(0, 0, cols, rows); // all transparent
+        offCtx.fillStyle = '#000000'; // black bg
+        offCtx.fillRect(0, 0, cols, rows);
+        offCtx.scale(1 / cellSize, 1 / cellSize);
+
+        offCtx.beginPath();
+        offCtx.moveTo(waveState.sourceLine[0].x, waveState.sourceLine[0].y);
+        for (let i = 1; i < waveState.sourceLine.length; i++) {
+            offCtx.lineTo(waveState.sourceLine[i].x, waveState.sourceLine[i].y);
+        }
+        offCtx.strokeStyle = '#ffffff';
+        offCtx.lineWidth = cellSize * 2;
+        offCtx.lineCap = 'round';
+        offCtx.lineJoin = 'round';
+        offCtx.stroke();
+
+        const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
+        const queue = [];
+
+        for (let i = 0; i < cols * rows; i++) {
+            if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
+                grid[i] = 0;
+                queue.push(i);
+            }
+        }
+
+        if (queue.length === 0) return;
+
+        let head = 0;
+        let maxDist = 0;
+
+        function check(nIdx, nd, nx, ny) {
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
+                    grid[nIdx] = nd;
+                    if (nd > maxDist) maxDist = nd;
+                    queue.push(nIdx);
+                }
+            }
+        }
+
+        // BFS distance calculation
+        while (head < queue.length) {
+            const curr = queue[head++];
+            const d = grid[curr];
+            const cy = Math.floor(curr / cols);
+            const cx = curr % cols;
+
+            check(curr - cols, d + 1, cx, cy - 1);
+            check(curr + cols, d + 1, cx, cy + 1);
+            check(curr - 1, d + 1, cx - 1, cy);
+            check(curr + 1, d + 1, cx + 1, cy);
+        }
+
+        // Generate heatmap visual
+        const heatCanvas = document.createElement('canvas');
+        heatCanvas.width = canvas.width;
+        heatCanvas.height = canvas.height;
+        const hctx = heatCanvas.getContext('2d');
+
+        offCtx.resetTransform();
+        offCtx.clearRect(0, 0, cols, rows);
+        const heatImgData = offCtx.createImageData(cols, rows);
+
+        for (let i = 0; i < cols * rows; i++) {
+            const d = grid[i];
+            if (d >= 0 && obstacles[i] === 0) {
+                let ratio = d / Math.max(1, maxDist);
+                // Curve slightly to emphasize red/high impact zones
+                ratio = Math.pow(ratio, 0.8);
+                const hue = ratio * 240; // 0=Red to 240=Blue
+                const rgb = hslToRgb(hue / 360, 1, 0.5);
+
+                heatImgData.data[i * 4] = rgb[0];
+                heatImgData.data[i * 4 + 1] = rgb[1];
+                heatImgData.data[i * 4 + 2] = rgb[2];
+                // Max opacity handled by globalAlpha via slider now
+                heatImgData.data[i * 4 + 3] = 255;
+            }
+        }
+
+        offCtx.putImageData(heatImgData, 0, 0);
+
+        hctx.imageSmoothingEnabled = true;
+        // Blur filters the blocky Manhattan edges into organic curves
+        hctx.filter = 'blur(15px)';
+        hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+
+        waveState.heatmapCanvas = heatCanvas;
+    }
+
+    function hslToRgb(h, s, l) {
+        let r, g, b;
+        if (s === 0) {
+            r = g = b = l;
+        } else {
+            const hue2rgb = function (p, q, t) {
+                if (t < 0) t += 1;
+                if (t > 1) t -= 1;
+                if (t < 1 / 6) return p + (q - p) * 6 * t;
+                if (t < 1 / 2) return q;
+                if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+                return p;
+            }
+            const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+            const p = 2 * l - q;
+            r = hue2rgb(p, q, h + 1 / 3);
+            g = hue2rgb(p, q, h);
+            b = hue2rgb(p, q, h - 1 / 3);
+        }
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+});

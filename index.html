@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculateur de Cellules Filtrantes</title>
+    <!-- Modern typography from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- Our premium light theme CSS -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Header Section -->
+        <header class="glass-header">
+            <h1>Calculateur de Cellules Filtrantes</h1>
+            <p>Importez une image de port pour commencer la planification</p>
+        </header>
+
+        <!-- Layout Wrapper -->
+        <div class="workspace-wrapper">
+            <!-- Sidebar -->
+            <aside id="sidebar-panel" class="glass-sidebar hidden">
+                <div class="image-adjustments">
+                    <h2>Image</h2>
+                    <div class="slider-group">
+                        <label for="img-brightness">Assombrir</label>
+                        <input type="range" id="img-brightness" min="20" max="100" value="100">
+                    </div>
+                    <div class="slider-group">
+                        <label for="wave-intensity">Intensité vagues</label>
+                        <input type="range" id="wave-intensity" min="10" max="100" value="65">
+                    </div>
+                </div>
+                <div class="sidebar-divider"></div>
+                <div class="save-load-group" style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button id="btn-save-project" class="btn-secondary btn-small" style="flex: 1;"
+                        title="Sauvegarder en local">Sauvegarder</button>
+                    <button id="btn-load-project" class="btn-secondary btn-small" style="flex: 1;"
+                        title="Charger un fichier">Charger</button>
+                    <input type="file" id="load-file-input" accept=".json" hidden>
+                </div>
+                <hr class="sidebar-divider" style="margin-top: 12px; margin-bottom: 8px;">
+                <h2>Zones définies</h2>
+                <div id="zone-list-container" class="zone-list"></div>
+            </aside>
+
+            <!-- Main Content Area -->
+            <main class="main-workspace">
+                <!-- Upload Overlay - Visible initially or on drag -->
+                <div id="upload-zone" class="upload-zone">
+                    <div class="upload-content">
+                        <div class="upload-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                <polyline points="17 8 12 3 7 8"></polyline>
+                                <line x1="12" y1="3" x2="12" y2="15"></line>
+                            </svg>
+                        </div>
+                        <h2>Glissez et déposez votre image ici</h2>
+                        <p>ou cliquez pour parcourir vos fichiers</p>
+                        <button class="btn-primary" onclick="document.getElementById('file-input').click()">Sélectionner
+                            une
+                            image</button>
+                        <input type="file" id="file-input" accept="image/png, image/jpeg, image/jpg" hidden>
+                    </div>
+                </div>
+
+                <!-- Canvas Container - Hidden initially -->
+                <div id="canvas-container" class="canvas-container hidden">
+                    <!-- Toolbar Panel (Not floating over canvas) -->
+                    <div class="toolbar glass-panel">
+                        <button class="tool-btn active" data-tool="draw" title="Dessiner une zone">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 20h9"></path>
+                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" data-tool="merge" title="Fusionner deux zones">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="10" cy="10" r="7"></circle>
+                                <circle cx="14" cy="14" r="7"></circle>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" data-tool="wave" title="Pinceau vagues">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path
+                                    d="M2 12c.5-1 1-1 1.5 0s1 1 1.5 0 1-1 1.5 0 1 1 1.5 0 1-1 1.5 0 1 1 1.5 0 1-1 1.5 0">
+                                </path>
+                                <path
+                                    d="M2 18c.5-1 1-1 1.5 0s1 1 1.5 0 1-1 1.5 0 1 1 1.5 0 1-1 1.5 0 1 1 1.5 0 1-1 1.5 0">
+                                </path>
+                            </svg>
+                        </button>
+                        <button class="tool-btn" data-tool="erase" title="Effacer une zone au clic">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path
+                                    d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2">
+                                </path>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="canvas-wrapper">
+                        <canvas id="port-canvas"></canvas>
+                    </div>
+
+                    <div class="canvas-controls glass-panel">
+                        <div class="control-group" id="drawing-controls">
+                            <span id="instruction-text" class="instruction-text">Mode dessin: Cliquez pour tracer une
+                                zone.</span>
+                            <button id="btn-finish-zone" class="btn-primary btn-small hidden">Terminer</button>
+                            <button id="btn-cancel-zone" class="btn-secondary btn-small hidden">Annuler</button>
+                            <button id="btn-clear-waves" class="btn-secondary btn-small hidden" style="color:#e74c3c"
+                                title="Effacer l'impact">Effacer Vagues</button>
+                        </div>
+                        <div class="divider"></div>
+                        <button id="btn-reset" class="btn-secondary" title="Nouvelle image">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <polyline points="1 4 1 10 7 10"></polyline>
+                                <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script src="polybool.min.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>
