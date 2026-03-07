@@ -150,6 +150,7 @@
 
                     <div class="canvas-wrapper">
                         <canvas id="port-canvas"></canvas>
+                        <canvas id="cells-overlay" class="cells-overlay-canvas"></canvas>
                     </div>
 
                     <div class="canvas-controls glass-panel">
@@ -290,21 +291,45 @@
                     <p id="est-scale-status">Aucune échelle définie — allez dans Simulation &rarr; Outil Règle pour
                         calibrer.</p>
                 </div>
-                <button id="btn-run-estimation" class="btn-primary">
-                    ⚡ Lancer l'estimation
-                </button>
+                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                    <span id="est-auto-badge" class="est-auto-badge">⚡ Calcul automatique</span>
+                    <button id="btn-run-estimation" class="btn-primary" style="padding:8px 18px; font-size:0.85rem;">
+                        ↻ Recalculer
+                    </button>
+                </div>
             </div>
 
             <div class="estimation-body">
 
                 <!-- Left: Parameters -->
                 <div class="est-card">
-                    <div class="est-card-title">⚙️ Paramètres physiques</div>
+                    <div class="est-card-title">⚙️ Paramètres du port</div>
+
+                    <!-- Live formula preview -->
+                    <div class="est-formula-box">
+                        <div class="est-formula-title">Formule de référence</div>
+                        <div class="est-formula">V = N &times; P &times; F</div>
+                        <div id="est-formula-values" class="est-formula-result">—</div>
+                    </div>
 
                     <div class="est-param-group">
-                        <label class="est-label">Épaisseur de nappe <span class="est-unit">(mm)</span></label>
-                        <input type="number" id="est-thickness" value="5" min="0.1" step="0.1" class="est-input">
-                        <small>Épaisseur typique : 1–10mm pour hydrocarbures légers</small>
+                        <label class="est-label">N — Anneaux du port</label>
+                        <input type="number" id="est-moorings" value="600" min="1" class="est-input">
+                        <small>Ex : 600 anneaux à Narbonne</small>
+                    </div>
+
+                    <div class="est-param-group">
+                        <label class="est-label">P — Taux bateaux actifs <span class="est-unit">(%)</span></label>
+                        <input type="number" id="est-active-rate" value="30" min="1" max="100" step="1"
+                            class="est-input">
+                        <small>Moteurs actifs régulièrement (~30%)</small>
+                    </div>
+
+                    <div class="est-param-group">
+                        <label class="est-label">F — Perte / bateau actif / an <span class="est-unit">(L)</span></label>
+                        <input type="number" id="est-loss-per-boat" value="0.5" min="0.01" step="0.01"
+                            class="est-input">
+                        <small>Fuites étoupes, débordements (~0,5 L/an)</small>
                     </div>
 
                     <div class="est-param-group">
@@ -315,14 +340,15 @@
                     </div>
 
                     <div class="est-param-group">
-                        <label class="est-label">Durée projetée <span class="est-unit">(heures)</span></label>
-                        <input type="number" id="est-duration" value="24" min="1" class="est-input">
+                        <label class="est-label">Espacement max entre cellules <span class="est-unit">(m)</span></label>
+                        <input type="number" id="est-max-spacing" value="10" min="1" step="1" class="est-input">
+                        <small>Distance max entre 2 cellules pour capturer la pollution (~10m)</small>
                     </div>
 
                     <div class="est-info-box">
-                        <strong>ℹ️ Méthodologie</strong><br>
-                        Volume = Surface × Épaisseur × Densité moy.<br>
-                        Cellules = Volume total ÷ Capacité / cellule
+                        <strong>ℹ️ Équilibre volume/surface</strong><br>
+                        Les cellules sont ni trop nombreuses (sous-remplies) ni trop rares (côtes non couvertes).<br>
+                        <em>C = max(C_vol, ⌈Côte ÷ Espacement⌉)</em>
                     </div>
                 </div>
 
@@ -336,6 +362,28 @@
                     </div>
 
                     <div id="est-results-data" class="hidden">
+
+                        <!-- Approach 1: Volumetric -->
+                        <div class="est-approach-title">🧪 Approche Volumétrique (N×P×F)</div>
+                        <div class="est-metric">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🛢️</div>
+                                <div class="est-metric-label">Volume hydrocarbures / an</div>
+                            </div>
+                            <div id="est-volume" class="est-metric-value">—</div>
+                        </div>
+                        <div class="est-metric est-metric-highlight">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🔲</div>
+                                <div class="est-metric-label">Cellules nécessaires (absorption)</div>
+                            </div>
+                            <div id="est-cells-vol" class="est-metric-value est-metric-big">—</div>
+                        </div>
+
+                        <div class="est-separator"></div>
+
+                        <!-- Approach 2: Spatial (from simulation) -->
+                        <div class="est-approach-title">🗺️ Approche Spatiale (simulation)</div>
                         <div class="est-metric">
                             <div class="est-metric-left">
                                 <div class="est-metric-icon">📏</div>
@@ -350,19 +398,24 @@
                             </div>
                             <div id="est-polluted-area" class="est-metric-value">—</div>
                         </div>
-                        <div class="est-metric">
-                            <div class="est-metric-left">
-                                <div class="est-metric-icon">🛢️</div>
-                                <div class="est-metric-label">Volume hydrocarbures</div>
-                            </div>
-                            <div id="est-volume" class="est-metric-value">—</div>
-                        </div>
                         <div class="est-metric est-metric-highlight">
                             <div class="est-metric-left">
                                 <div class="est-metric-icon">🔲</div>
-                                <div class="est-metric-label">Cellules filtrantes nécessaires</div>
+                                <div class="est-metric-label">Cellules pour couvrir les côtes</div>
                             </div>
-                            <div id="est-cells" class="est-metric-value est-metric-big">—</div>
+                            <div id="est-cells-spatial" class="est-metric-value est-metric-big">—</div>
+                        </div>
+
+                        <div class="est-separator"></div>
+
+                        <!-- Recommendation -->
+                        <div class="est-approach-title">✅ Recommandation finale</div>
+                        <div class="est-metric est-metric-final">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🔲</div>
+                                <div class="est-metric-label">Cellules filtrantes totales</div>
+                            </div>
+                            <div id="est-cells" class="est-metric-value est-metric-big est-metric-green">—</div>
                         </div>
                         <div class="est-metric">
                             <div class="est-metric-left">
@@ -374,9 +427,9 @@
                     </div>
                 </div>
 
-                <!-- Right: Breakdown by zone -->
+                <!-- Right: Explanation & detail -->
                 <div class="est-card">
-                    <div class="est-card-title">🗂️ Détail par zone polluante</div>
+                    <div class="est-card-title">🗂️ Détail du calcul</div>
                     <div id="est-breakdown">
                         <div class="est-placeholder">
                             <div class="est-placeholder-icon">📋</div>

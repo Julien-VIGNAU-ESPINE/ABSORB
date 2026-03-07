@@ -177,6 +177,8 @@ document.addEventListener('DOMContentLoaded', () => {
             navSimulation.classList.remove('active');
             workspaceWrapper.classList.add('hidden');
             if (estimationPage) estimationPage.classList.remove('hidden');
+            // Auto-run estimation when switching to the tab
+            setTimeout(() => runEstimation(), 50);
         });
     }
 
@@ -1155,18 +1157,16 @@ document.addEventListener('DOMContentLoaded', () => {
         el.appendChild(header);
         el.appendChild(select);
 
-        // Show pollution intensity slider + L/h for 'polluante' zones
+        // Show visual intensity slider for 'polluante' zones
         if (zone.type === 'polluante') {
             if (zone.pollutionIntensity === undefined) zone.pollutionIntensity = 0.1;
-            if (zone.litersPerHour === undefined) zone.litersPerHour = 50;
 
             const intensityWrapper = document.createElement('div');
             intensityWrapper.style.marginTop = '8px';
             intensityWrapper.style.display = 'flex';
             intensityWrapper.style.flexDirection = 'column';
-            intensityWrapper.style.gap = '6px';
+            intensityWrapper.style.gap = '4px';
 
-            // --- Intensity slider ---
             const intensityLabel = document.createElement('label');
             intensityLabel.style.fontSize = '0.8rem';
             intensityLabel.style.color = 'var(--clr-text-muted)';
@@ -1196,45 +1196,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 valueDisplay.textContent = `${e.target.value}%`;
             };
 
-            // --- Litres/heure input ---
-            const lphWrapper = document.createElement('div');
-            lphWrapper.style.display = 'flex';
-            lphWrapper.style.alignItems = 'center';
-            lphWrapper.style.gap = '6px';
-            lphWrapper.style.marginTop = '4px';
-
-            const lphLabel = document.createElement('label');
-            lphLabel.style.fontSize = '0.8rem';
-            lphLabel.style.color = 'var(--clr-text-muted)';
-            lphLabel.style.flex = '1';
-            lphLabel.textContent = 'Déversement (L/h)';
-
-            const lphInput = document.createElement('input');
-            lphInput.type = 'number';
-            lphInput.min = '0';
-            lphInput.step = '1';
-            lphInput.value = zone.litersPerHour;
-            lphInput.style.width = '70px';
-            lphInput.style.padding = '4px 6px';
-            lphInput.style.borderRadius = '6px';
-            lphInput.style.border = '1px solid var(--clr-border)';
-            lphInput.style.background = 'var(--clr-background)';
-            lphInput.style.color = 'inherit';
-            lphInput.style.fontFamily = 'inherit';
-            lphInput.style.fontSize = '0.85rem';
-            lphInput.onclick = (e) => e.stopPropagation();
-            lphInput.oninput = (e) => {
-                zone.litersPerHour = parseFloat(e.target.value) || 0;
-            };
-
-            lphWrapper.appendChild(lphLabel);
-            lphWrapper.appendChild(lphInput);
-
             intensityWrapper.appendChild(intensityLabel);
             intensityWrapper.appendChild(intensitySlider);
-            intensityWrapper.appendChild(lphWrapper);
             el.appendChild(intensityWrapper);
         }
+
 
 
         return el;
@@ -2396,110 +2362,453 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- Estimation Page Logic ---
-    const btnRunEstimation = document.getElementById('btn-run-estimation');
-    if (btnRunEstimation) {
-        btnRunEstimation.addEventListener('click', () => {
-            const ppm = rulerState.pixelsPerMeter;
-            if (!ppm) {
-                alert("⚠️ Pas d'échelle définie ! Allez dans Simulation, sélectionnez l'outil Règle et tracez une ligne sur la carte.");
-                return;
-            }
-            if (!pollutionState.density || !pollutionState.cols) {
-                alert("⚠️ Pas de simulation de pollution disponible ! Lancez d'abord la simulation.");
-                return;
-            }
 
-            const cellSize = 6; // px per pollution cell
-            const metersPerPx = 1 / ppm;
-            const metersPerCell = cellSize * metersPerPx;
-            const m2PerCell = metersPerCell * metersPerCell;
+    // Global store for placed cells (used for export / "view on map" button)
+    let placedCells = [];
 
-            const duration = parseFloat(document.getElementById('est-duration').value) || 24;
-            const cellCapacityL = parseFloat(document.getElementById('est-cell-capacity').value) || 10;
+    // ═══════════════════════════════════════════════════════════════
+    // computeAndDrawCellPlacement
+    //
+    // Algorithm:
+    //  1. Scan impactMask → find all coast pixels touched by pollution
+    //  2. Score each coast pixel:
+    //       score = density_at_pixel            (simulation result, already
+    //             + source_proximity_bonus       includes boat currents)
+    //             + boat_path_proximity_bonus
+    //  3. Group coast pixels into 1m-wide segments
+    //  4. Place cells with two passes:
+    //       Pass 1: guaranteed 1 cell every maxSpacingM metres (coverage)
+    //       Pass 2: add extra cells in proportion to local score (hotspots)
+    //  5. Draw on the overlay canvas (coloured by fill intensity)
+    // ═══════════════════════════════════════════════════════════════
+    function computeAndDrawCellPlacement(finalCells, maxSpacingM) {
+        const overlayCanvas = document.getElementById('cells-overlay');
+        if (!overlayCanvas) return [];
 
-            const density = pollutionState.density;
-            const numCells = pollutionState.cols * pollutionState.rows;
+        const ppm = rulerState.pixelsPerMeter;
 
-            // Count polluted area from simulation
-            let pollutedCellCount = 0;
-            for (let i = 0; i < numCells; i++) {
-                if (density[i] > 0.01) pollutedCellCount++;
-            }
-            const pollutedAreaM2 = pollutedCellCount * m2PerCell;
+        // Sync overlay canvas dimensions with main canvas
+        overlayCanvas.width = canvas.width;
+        overlayCanvas.height = canvas.height;
+        const oct = overlayCanvas.getContext('2d');
+        oct.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
 
-            // Coast length from impactMask
-            let coastCells = 0;
-            if (pollutionState.impactMask) {
-                for (let i = 0; i < pollutionState.impactMask.length; i++) {
-                    if (pollutionState.impactMask[i] === 1) coastCells++;
-                }
-            }
-            const coastLengthM = coastCells * metersPerCell;
+        if (!ppm || !pollutionState.impactMask || !pollutionState.density) return [];
 
-            // Volume from zones L/h × duration
-            const polluantZones = zones.filter(z => z.type === 'polluante');
-            let totalVolumeLFromZones = 0;
-            polluantZones.forEach(z => {
-                totalVolumeLFromZones += (z.litersPerHour || 0) * duration;
-            });
+        const W = canvas.width;
+        const H = canvas.height;
+        const impactMask = pollutionState.impactMask;
+        const densityArr = pollutionState.density;
+        const cols = pollutionState.cols || 1;
+        const simCellSize = 6; // px per sim cell (matches simulation grid)
 
-            // Fallback if no L/h defined: use thickness approach
-            const thicknessMm = parseFloat(document.getElementById('est-thickness').value) || 5;
-            const thicknessM = thicknessMm / 1000;
-            const volumeLFromThickness = pollutedAreaM2 * thicknessM * 1000;
+        // ── Step 1: collect coast pixels with a score ─────────────
+        const coastPixels = [];
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                const idx = y * W + x;
+                if (!impactMask[idx]) continue;
 
-            const volumeL = totalVolumeLFromZones > 0 ? totalVolumeLFromZones : volumeLFromThickness;
+                // Density at this canvas position
+                const dc = Math.floor(x / simCellSize);
+                const dr = Math.floor(y / simCellSize);
+                const didx = dr * cols + (dc || 0);
+                const density = densityArr[didx] ?? 0;
 
-            const numFilterCells = Math.ceil(volumeL / cellCapacityL);
-            const barrierLengthM = numFilterCells; // 1 cell = 1m wide
-
-            // Display results
-            const placeholder = document.getElementById('est-placeholder');
-            if (placeholder) placeholder.classList.add('hidden');
-            document.getElementById('est-results-data').classList.remove('hidden');
-
-            document.getElementById('est-coast-length').textContent = coastLengthM > 0
-                ? `${coastLengthM.toFixed(0)} m`
-                : '— (activez "Alerte Côtes Rouges")';
-            document.getElementById('est-polluted-area').textContent = `${pollutedAreaM2.toFixed(0)} m²`;
-            document.getElementById('est-volume').textContent = `${volumeL.toFixed(0)} L`;
-            document.getElementById('est-cells').textContent = numFilterCells.toLocaleString('fr-FR');
-            document.getElementById('est-barrier-length').textContent = `${barrierLengthM} m`;
-
-            // Per-zone breakdown
-            const breakdown = document.getElementById('est-breakdown');
-            breakdown.innerHTML = '';
-            if (polluantZones.length === 0) {
-                breakdown.innerHTML = '<div class="est-placeholder"><div class="est-placeholder-icon">📋</div><p>Aucune zone polluante définie</p></div>';
-            } else {
-                polluantZones.forEach(zone => {
-                    const lph = zone.litersPerHour || 0;
-                    const zoneVol = lph * duration;
-                    const zoneCells = Math.ceil(zoneVol / cellCapacityL);
-                    const row = document.createElement('div');
-                    row.className = 'est-breakdown-row';
-                    row.innerHTML = `
-                        <span class="est-breakdown-name">🟣 ${zone.title}</span>
-                        <span class="est-breakdown-detail">
-                            ${lph} L/h × ${duration}h = <strong>${zoneVol.toFixed(0)} L</strong><br>
-                            → <strong>${zoneCells} cellule${zoneCells > 1 ? 's' : ''} filtrante${zoneCells > 1 ? 's' : ''}</strong>
-                        </span>
-                    `;
-                    breakdown.appendChild(row);
+                // Source proximity bonus: closer to a polluante zone centroid → more important
+                let sourceBonus = 0;
+                zones.filter(z => z.type === 'polluante').forEach(z => {
+                    if (!z.points || z.points.length === 0) return;
+                    const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length;
+                    const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length;
+                    const dist = Math.hypot(x - cx, y - cy);
+                    sourceBonus += Math.max(0, 1 - dist / (ppm * 50)); // decays over 50m
                 });
 
-                // Total row
-                const totalRow = document.createElement('div');
-                totalRow.className = 'est-breakdown-row';
-                totalRow.style.borderColor = 'var(--clr-primary)';
-                totalRow.style.background = 'var(--clr-primary-light)';
-                totalRow.innerHTML = `
-                    <span class="est-breakdown-name" style="color:var(--clr-primary)">🔲 TOTAL</span>
-                    <span class="est-breakdown-detail" style="font-weight:600; color:var(--clr-text-main)">${numFilterCells} cellules filtrantes • ${barrierLengthM} m de barrière</span>
-                `;
-                breakdown.appendChild(totalRow);
+                // Boat path proximity bonus: near a boat path → more turbulence/mixing
+                let boatBonus = 0;
+                boatPaths.forEach(bp => {
+                    if (!bp.points || bp.points.length < 2) return;
+                    for (let i = 0; i < bp.points.length - 1; i++) {
+                        const p1 = bp.points[i], p2 = bp.points[i + 1];
+                        // Point-to-segment distance
+                        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+                        const len2 = dx * dx + dy * dy;
+                        let t = len2 > 0 ? ((x - p1.x) * dx + (y - p1.y) * dy) / len2 : 0;
+                        t = Math.max(0, Math.min(1, t));
+                        const nx = p1.x + t * dx, ny = p1.y + t * dy;
+                        const dist = Math.hypot(x - nx, y - ny);
+                        boatBonus += Math.max(0, 1 - dist / (ppm * 20)); // decays over 20m
+                    }
+                });
+
+                const score = density * 4 + sourceBonus * 2 + boatBonus;
+                coastPixels.push({ x, y, score });
             }
+        }
+
+        if (coastPixels.length === 0) return [];
+
+        // ── Step 2: reduce to 1 point per metre along coast ───────
+        // Sort pixels left→right, top→bottom to get a consistent ordering
+        coastPixels.sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
+
+        const segmentScores = []; // one entry per metre-wide column
+        const pxPerMetre = ppm;
+        const totalWidth = W;
+
+        for (let col = 0; col < totalWidth; col += Math.max(1, Math.round(pxPerMetre))) {
+            const colPixels = coastPixels.filter(p =>
+                p.x >= col && p.x < col + Math.round(pxPerMetre));
+            if (colPixels.length === 0) continue;
+            const avgScore = colPixels.reduce((s, p) => s + p.score, 0) / colPixels.length;
+            // Representative point: topmost (closest to shore edge)
+            colPixels.sort((a, b) => a.y - b.y);
+            const rep = colPixels[0];
+            segmentScores.push({ x: rep.x, y: rep.y, score: avgScore, mCol: Math.round(col / pxPerMetre) });
+        }
+
+        if (segmentScores.length === 0) return [];
+
+        const totalMetres = segmentScores.length;
+        const maxScore = Math.max(...segmentScores.map(s => s.score)) || 1;
+        // Normalise scores
+        segmentScores.forEach(s => s.normScore = s.score / maxScore);
+
+        // ── Step 3: guaranteed coverage pass ──────────────────────
+        const placements = [];
+        let lastPlacedMetre = -maxSpacingM; // force first placement
+
+        for (let i = 0; i < segmentScores.length; i++) {
+            const seg = segmentScores[i];
+            const mPos = seg.mCol;
+            if (mPos - lastPlacedMetre >= maxSpacingM) {
+                placements.push({ ...seg, type: 'coverage' });
+                lastPlacedMetre = mPos;
+            }
+        }
+
+        // ── Step 4: extra cells in hotspots ───────────────────────
+        const extraNeeded = Math.max(0, finalCells - placements.length);
+        if (extraNeeded > 0) {
+            // Sort segments by score descending, pick top N that aren't already placed
+            const placed = new Set(placements.map(p => p.mCol));
+            const candidates = [...segmentScores]
+                .filter(s => !placed.has(s.mCol))
+                .sort((a, b) => b.normScore - a.normScore)
+                .slice(0, extraNeeded);
+            candidates.forEach(c => placements.push({ ...c, type: 'hotspot' }));
+        }
+
+        // Sort final placement by x for display
+        placements.sort((a, b) => a.x - b.x);
+        placedCells = placements;
+
+        // ── Step 5: draw on overlay canvas ────────────────────────
+        const cellW = Math.max(4, Math.round(pxPerMetre * 0.9));
+        const cellH = 12;
+
+        placements.forEach(cell => {
+            const intensity = cell.normScore;
+            // Colour: green (low pollution) → orange → red (high pollution)
+            const r = Math.round(intensity * 220);
+            const g = Math.round((1 - intensity) * 200 + 50);
+            const b = 80;
+            const alpha = 0.82;
+
+            // Cell body
+            oct.fillStyle = `rgba(${r},${g},${b},${alpha})`;
+            oct.strokeStyle = 'rgba(255,255,255,0.6)';
+            oct.lineWidth = 1;
+            oct.beginPath();
+            oct.roundRect(cell.x - cellW / 2, cell.y - cellH, cellW, cellH, 3);
+            oct.fill();
+            oct.stroke();
+
+            // For hotspot cells, add a small red ring
+            if (cell.type === 'hotspot') {
+                oct.strokeStyle = 'rgba(255,60,60,0.85)';
+                oct.lineWidth = 2;
+                oct.beginPath();
+                oct.arc(cell.x, cell.y - cellH / 2, cellW * 0.65, 0, Math.PI * 2);
+                oct.stroke();
+            }
+
+            // Score dot
+            oct.fillStyle = 'rgba(255,255,255,0.9)';
+            oct.beginPath();
+            oct.arc(cell.x, cell.y - cellH / 2, 2, 0, Math.PI * 2);
+            oct.fill();
         });
+
+        // Legend
+        drawCellLegend(oct, placements.length, placements.filter(p => p.type === 'hotspot').length);
+
+        return placements;
     }
+
+    function drawCellLegend(oct, total, hotspots) {
+        const pad = 12;
+        const w = 220, h = 90;
+        const x = oct.canvas.width - w - pad;
+        const y = pad;
+
+        oct.fillStyle = 'rgba(15,20,30,0.75)';
+        oct.beginPath();
+        oct.roundRect(x, y, w, h, 8);
+        oct.fill();
+
+        oct.font = 'bold 12px Inter, sans-serif';
+        oct.fillStyle = 'rgba(255,255,255,0.95)';
+        oct.fillText('🔲 Cellules filtrantes', x + 10, y + 20);
+
+        oct.font = '11px Inter, sans-serif';
+        oct.fillStyle = 'rgba(200,200,200,0.9)';
+        oct.fillText(`Total : ${total} cellule${total !== 1 ? 's' : ''}`, x + 10, y + 40);
+        oct.fillText(`Couverture : ${total - hotspots} régulière + ${hotspots} renforcée${hotspots !== 1 ? 's' : ''}`, x + 10, y + 56);
+
+        // Gradient key
+        const grad = oct.createLinearGradient(x + 10, 0, x + w - 10, 0);
+        grad.addColorStop(0, 'rgba(50,200,80,0.9)');
+        grad.addColorStop(0.5, 'rgba(220,150,30,0.9)');
+        grad.addColorStop(1, 'rgba(220,50,50,0.9)');
+        oct.fillStyle = grad;
+        oct.fillRect(x + 10, y + 68, w - 20, 8);
+        oct.font = '9px Inter, sans-serif';
+        oct.fillStyle = 'rgba(200,200,200,0.8)';
+        oct.fillText('faible', x + 10, y + 86);
+        oct.fillText('élevé', x + w - 35, y + 86);
+    }
+
+    function updateFormulaDisplay() {
+        const N = parseFloat(document.getElementById('est-moorings')?.value) || 0;
+        const P = parseFloat(document.getElementById('est-active-rate')?.value) || 0;
+        const F = parseFloat(document.getElementById('est-loss-per-boat')?.value) || 0;
+        const vTotal = N * (P / 100) * F;
+        const el = document.getElementById('est-formula-values');
+        if (el) {
+            el.innerHTML = `${N} × ${(P / 100).toFixed(2)} × ${F} L = <strong>${vTotal.toFixed(1)} L / an</strong>`;
+        }
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════
+    // runEstimation() — appelé automatiquement (onglet + params)
+    // ═══════════════════════════════════════════════════════════════
+    function runEstimation() {
+        updateFormulaDisplay();
+
+        const ppm = rulerState.pixelsPerMeter;
+        const badge = document.getElementById('est-auto-badge');
+
+        // ── Paramètres ────────────────────────────────────────────
+        const N = parseFloat(document.getElementById('est-moorings')?.value) || 0;
+        const Prate = parseFloat(document.getElementById('est-active-rate')?.value) / 100 || 0.3;
+        const F = parseFloat(document.getElementById('est-loss-per-boat')?.value) || 0.5;
+        const cellCapacityL = parseFloat(document.getElementById('est-cell-capacity')?.value) || 10;
+        const maxSpacingM = parseFloat(document.getElementById('est-max-spacing')?.value) || 10;
+
+        // ═══════════════════════════════════════════════════════════
+        // APPROCHE 1 — VOLUMÉTRIQUE  (N × P × F)
+        // ═══════════════════════════════════════════════════════════
+        const vTotalPerYear = N * Prate * F;         // litres / an
+        const activeBoats = Math.round(N * Prate);
+        const cellsFromVolume = vTotalPerYear > 0 ? Math.ceil(vTotalPerYear / cellCapacityL) : 0;
+
+        // ═══════════════════════════════════════════════════════════
+        // APPROCHE 2 — SPATIALE  (depuis la simulation)
+        // ═══════════════════════════════════════════════════════════
+        let pollutedAreaM2 = 0;
+        let coastLengthM = 0;
+        let cellsFromSpacing = 0;
+        let cellsFromCoast = 0;
+        let hasSimData = false;
+
+        if (ppm && pollutionState.density && pollutionState.cols) {
+            hasSimData = true;
+            const cellSize = 6;
+            const metersPerCell = cellSize / ppm;
+            const m2PerCell = metersPerCell * metersPerCell;
+
+            const density = pollutionState.density;
+            const totalSimCells = pollutionState.cols * pollutionState.rows;
+            let pollutedCount = 0;
+            for (let i = 0; i < totalSimCells; i++) {
+                if (density[i] > 0.01) pollutedCount++;
+            }
+            pollutedAreaM2 = pollutedCount * m2PerCell;
+
+            if (pollutionState.impactMask) {
+                let coastCount = 0;
+                for (let i = 0; i < pollutionState.impactMask.length; i++) {
+                    if (pollutionState.impactMask[i] === 1) coastCount++;
+                }
+                coastLengthM = coastCount / ppm;
+                cellsFromCoast = Math.ceil(coastLengthM);   // 1 cellule/m = couverture totale
+                cellsFromSpacing = Math.ceil(coastLengthM / maxSpacingM); // espacement raisonnable
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // FORMULE D'ÉQUILIBRE
+        //
+        // Problème : si C_vol=9 mais C_coast=200 → prendre max=200 serait
+        // absurde (taux remplissage 4,5%). Prendre C_vol=9 sur 200m serait
+        // dangereux (1 cellule tous les 22m, laisse passer la pollution).
+        //
+        // Solution : C = max(C_vol, C_spacing)
+        //   - C_spacing = ⌈côte / espacement_max⌉
+        //   - L'espacement max garantit qu'aucune zone n'est laissée sans
+        //     couverture, sans pour autant doubler les cellules là où la
+        //     densité de pollution est trop faible pour les remplir.
+        //
+        // Taux de remplissage résultant = V / (C × capacité)
+        // Si taux < 20% : on affiche un avertissement de sous-dimensionnement
+        // ═══════════════════════════════════════════════════════════
+        const finalCells = Math.max(cellsFromVolume, cellsFromSpacing || cellsFromVolume);
+        const barrierLengthM = finalCells;
+        const fillRate = finalCells > 0 && vTotalPerYear > 0
+            ? Math.round((vTotalPerYear / (finalCells * cellCapacityL)) * 100)
+            : 0;
+
+        // Espace réel entre cellules
+        const actualSpacing = coastLengthM > 0 && finalCells > 0
+            ? (coastLengthM / finalCells).toFixed(1)
+            : '—';
+
+        // ── Affichage ─────────────────────────────────────────────
+        const placeholder = document.getElementById('est-placeholder');
+        if (placeholder) placeholder.classList.add('hidden');
+        document.getElementById('est-results-data').classList.remove('hidden');
+
+        // Badge
+        if (badge) {
+            if (!ppm) {
+                badge.textContent = '⚠️ Pas d\'échelle — résultats partiels';
+                badge.style.background = 'rgba(231,76,60,0.15)';
+                badge.style.color = '#e74c3c';
+            } else {
+                badge.textContent = '✅ Calcul automatique';
+                badge.style.background = 'rgba(39,174,96,0.15)';
+                badge.style.color = '#27ae60';
+            }
+        }
+
+        // Approche 1
+        document.getElementById('est-volume').textContent = `${vTotalPerYear.toFixed(1)} L / an`;
+        document.getElementById('est-cells-vol').textContent =
+            `${cellsFromVolume.toLocaleString('fr-FR')} cellule${cellsFromVolume !== 1 ? 's' : ''}`;
+
+        // Approche 2
+        document.getElementById('est-coast-length').textContent = hasSimData
+            ? (coastLengthM > 0 ? `${coastLengthM.toFixed(0)} m` : '— (activez "Alerte Côtes Rouges")')
+            : '— (lancez d\'abord la simulation)';
+        document.getElementById('est-polluted-area').textContent = hasSimData
+            ? `${pollutedAreaM2.toFixed(0)} m²` : '—';
+        document.getElementById('est-cells-spatial').textContent = hasSimData && cellsFromSpacing > 0
+            ? `${cellsFromSpacing} cellule${cellsFromSpacing !== 1 ? 's' : ''} (1 / ${maxSpacingM}m)`
+            : '— (pas de données côtières)';
+
+        // Final
+        document.getElementById('est-cells').textContent = finalCells.toLocaleString('fr-FR');
+        document.getElementById('est-barrier-length').textContent = `${barrierLengthM} m`;
+
+        // ── Détail du calcul ──────────────────────────────────────
+        const breakdown = document.getElementById('est-breakdown');
+        breakdown.innerHTML = '';
+
+        const addTitle = (t) => {
+            const el = document.createElement('div');
+            el.className = 'est-approach-title';
+            el.style.marginTop = '10px';
+            el.textContent = t;
+            breakdown.appendChild(el);
+        };
+        const addRow = (name, detail, style = {}) => {
+            const row = document.createElement('div');
+            row.className = 'est-breakdown-row';
+            Object.assign(row.style, style);
+            row.innerHTML = `<span class="est-breakdown-name">${name}</span><span class="est-breakdown-detail">${detail}</span>`;
+            breakdown.appendChild(row);
+        };
+
+        // Volume
+        addTitle('🧪 Approche Volumétrique');
+        addRow('Formule V = N × P × F',
+            `${N} × ${(Prate * 100).toFixed(0)}% × ${F} L = <strong>${vTotalPerYear.toFixed(1)} L / an</strong>`);
+        addRow('Bateaux concernés',
+            `${N} anneaux → <strong>${activeBoats} bateaux actifs</strong>`);
+        addRow('Cellules requises',
+            `${vTotalPerYear.toFixed(1)} L ÷ ${cellCapacityL} L = <strong>${cellsFromVolume} cellule${cellsFromVolume !== 1 ? 's' : ''}</strong>`);
+
+        // Spatial
+        addTitle('🗺️ Approche Spatiale (espacement max = ' + maxSpacingM + 'm)');
+        if (hasSimData) {
+            addRow('Surface polluée', `${pollutedAreaM2.toFixed(0)} m²`);
+            if (coastLengthM > 0) {
+                addRow('Côte impactée', `<strong>${coastLengthM.toFixed(0)} m</strong>`);
+                addRow('Couverture totale', `${coastLengthM.toFixed(0)} m ÷ 1m/cellule = <strong>${cellsFromCoast} cellules</strong> (si 100% couvert)`);
+                addRow(`Avec espacement max ${maxSpacingM}m`,
+                    `${coastLengthM.toFixed(0)} m ÷ ${maxSpacingM}m = <strong>${cellsFromSpacing} cellule${cellsFromSpacing !== 1 ? 's' : ''}</strong>`);
+            } else {
+                addRow('Côtes', 'Non disponible — activez "Alerte Côtes Rouges"');
+            }
+        } else if (!ppm) {
+            addRow('Échelle', 'Non calibrée — allez dans Simulation → Outil Règle');
+        } else {
+            addRow('Simulation', 'Aucune donnée — lancez la simulation');
+        }
+
+        // Équilibre
+        addTitle('⚖️ Formule d\'équilibre');
+        const limitingFactor = cellsFromSpacing >= cellsFromVolume
+            ? `espacement max (${cellsFromSpacing} ≥ ${cellsFromVolume})`
+            : `volume (${cellsFromVolume} ≥ ${cellsFromSpacing || '?'})`;
+        addRow('C = max(C_vol, C_espacement)',
+            `max(${cellsFromVolume}, ${cellsFromSpacing || '?'}) = <strong>${finalCells} cellule${finalCells !== 1 ? 's' : ''}</strong><br>Facteur limitant : ${limitingFactor}`);
+        if (coastLengthM > 0) {
+            addRow('Espacement réel', `${coastLengthM.toFixed(0)} m ÷ ${finalCells} = <strong>${actualSpacing} m entre cellules</strong>`);
+        }
+
+        // Fill rate
+        const fillColor = fillRate >= 50 ? '#27ae60' : fillRate >= 20 ? '#e67e22' : '#e74c3c';
+        const fillMsg = fillRate >= 50 ? '✅ Bon taux de remplissage'
+            : fillRate >= 20 ? '⚠️ Taux acceptable (augmentez l\'espacement max si voulu)'
+                : '🔴 Cellules sous-utilisées — augmentez l\'espacement max';
+        addRow('Taux de remplissage estimé',
+            `${vTotalPerYear.toFixed(1)} L ÷ (${finalCells} × ${cellCapacityL} L) = <strong style="color:${fillColor}">${fillRate}%</strong><br>${fillMsg}`,
+            fillRate < 20 ? { borderColor: '#e74c3c', background: 'rgba(231,76,60,0.06)' } : {});
+
+        // Recommandation finale
+        addTitle('✅ Recommandation finale');
+        addRow('🔲 Cellules filtrantes',
+            `<strong style="color:#27ae60; font-size:1.1em">${finalCells} cellule${finalCells !== 1 ? 's' : ''}</strong> — ${barrierLengthM} m de barrière`,
+            { borderColor: 'var(--clr-primary)', background: 'var(--clr-primary-light)' });
+
+        // Zones polluantes
+        const polluantZones = zones.filter(z => z.type === 'polluante');
+        if (polluantZones.length > 0) {
+            addTitle(`🟣 Répartition automatique (${polluantZones.length} zone${polluantZones.length > 1 ? 's' : ''})`);
+            const shareV = vTotalPerYear / polluantZones.length;
+            const shareC = finalCells / polluantZones.length;
+            polluantZones.forEach(zone => {
+                addRow(`🟣 ${zone.title}`,
+                    `${shareV.toFixed(1)} L/an — <strong>${Math.ceil(shareC)} m de barrière</strong>`);
+            });
+        }
+    }
+
+    // Auto-recalc when any estimation parameter changes
+    ['est-moorings', 'est-active-rate', 'est-loss-per-boat', 'est-cell-capacity', 'est-max-spacing'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', runEstimation);
+    });
+
+    // Manual recalc button
+    const btnRunEstimation = document.getElementById('btn-run-estimation');
+    if (btnRunEstimation) btnRunEstimation.addEventListener('click', runEstimation);
+
+    // Initial display
+    updateFormulaDisplay();
 
 });

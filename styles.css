@@ -812,3 +812,97 @@ canvas {
     color: var(--clr-text-muted);
     line-height: 1.5;
 }
+
+/* Formula display */
+.est-formula-box {
+    background: linear-gradient(135deg, rgba(0, 102, 204, 0.12), rgba(0, 102, 204, 0.04));
+    border: 1px solid rgba(0, 102, 204, 0.25);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.est-formula-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--clr-primary);
+    opacity: 0.8;
+}
+
+.est-formula {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--clr-primary);
+    letter-spacing: 0.04em;
+    font-family: Georgia, 'Times New Roman', serif;
+}
+
+.est-formula-result {
+    font-size: 0.82rem;
+    color: var(--clr-text-muted);
+    font-style: italic;
+    border-top: 1px solid rgba(0, 102, 204, 0.15);
+    padding-top: 6px;
+    margin-top: 2px;
+    line-height: 1.5;
+}
+
+/* Approach sections */
+.est-approach-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--clr-primary);
+    opacity: 0.75;
+    margin-top: 4px;
+    margin-bottom: 2px;
+}
+
+.est-separator {
+    height: 1px;
+    background: var(--clr-border);
+    margin: 8px 0;
+}
+
+.est-metric-final {
+    background: linear-gradient(135deg, rgba(0, 102, 204, 0.12), rgba(0, 102, 204, 0.06));
+    border: 2px solid var(--clr-primary);
+    border-radius: 12px;
+    padding: 12px;
+}
+
+.est-metric-green {
+    color: #27ae60 !important;
+}
+
+/* Auto-calc badge */
+.est-auto-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    background: rgba(39, 174, 96, 0.12);
+    color: #27ae60;
+    border: 1px solid rgba(39, 174, 96, 0.3);
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background 0.3s, color 0.3s;
+}
+
+/* Cell placement overlay canvas */
+.cells-overlay-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    z-index: 10;
+}
