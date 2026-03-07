@@ -789,6 +789,10 @@ canvas {
     color: var(--clr-primary);
 }
 
+.est-metric-green {
+    color: #27ae60 !important;
+}
+
 /* Breakdown */
 .est-breakdown-row {
     display: flex;

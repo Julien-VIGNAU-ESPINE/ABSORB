@@ -122,7 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
         waveState.active = (tool === 'wave');
         waveState.isDrawingSource = false;
 
-        // Ruler tool: show scale section in sidebar
         if (scaleSection) {
             if (tool === 'ruler') {
                 scaleSection.classList.remove('hidden');
@@ -377,7 +376,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- Core Updates ---
+
+    // --- Helper Functions ---
     function updateSimulationAndRender() {
         const visibleBoats = boatPaths.filter(b => b.visible);
         if ((waveState.sourceLine && waveState.sourceLine.length > 2) || visibleBoats.length > 0) {
@@ -450,6 +450,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCanvas();
                 showCanvas();
                 updateControlsUI();
+                runEstimation();
             };
             img.src = e.target.result;
         };
@@ -566,7 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (pollutionState.impactCanvas && (!cbShowImpact || cbShowImpact.checked)) {
-            // Draw red warnings on top of EVERYTHING
+            // Draw red warnings
             ctx.drawImage(pollutionState.impactCanvas, 0, 0, canvas.width, canvas.height);
         }
 
@@ -582,6 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.stroke();
             ctx.setLineDash([]);
         }
+
 
         // Draw current polygon
         if (currentPolygon.length > 0) {
@@ -687,7 +689,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         fileInput.value = ''; // Reset file input
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+        // filterCells = []; // Removed as per instruction
+        renderCanvas();
         canvasContainer.classList.add('hidden');
         sidebarPanel.classList.add('hidden');
         if (toolsPanel) toolsPanel.classList.add('hidden');
@@ -875,8 +878,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    canvas.addEventListener('mouseup', handleWaveMouseUp);
-    canvas.addEventListener('mouseleave', handleWaveMouseUp);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('mouseleave', handleMouseUp);
+
+    function handleMouseUp(e) {
+        handleWaveMouseUp(e);
+    }
 
     function handleWaveMouseUp(e) {
         if (currentTool === 'wave' && waveState.isDrawingSource) {
@@ -934,11 +941,15 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (currentTool === 'wave') {
             instructionText.innerText = "Mode Vagues: Dessinez l'entrée d'eau (glissez-déposez).";
             btnFinishZone.classList.add('hidden');
-            btnCancelZone.classList.remove('hidden');
+            btnCancelZone.classList.add('hidden');
         } else if (currentTool === 'erase') {
             instructionText.innerText = "Mode Effaceur: Cliquez sur une zone pour la supprimer.";
             btnFinishZone.classList.add('hidden');
             btnCancelZone.classList.add('hidden');
+        } else if (currentTool === 'ruler') {
+            instructionText.innerText = "Mode Règle: Cliquez deux points pour définir une distance.";
+            btnFinishZone.classList.add('hidden');
+            btnCancelZone.classList.remove('hidden');
         }
 
         // Only show Clear Waves if we have heatmap
@@ -956,6 +967,8 @@ document.addEventListener('DOMContentLoaded', () => {
         boatPaths.forEach(b => b.isRunning = false);
         updateBoatListUI();
         updateSimulationAndRender();
+
+        runEstimation();
     }
 
     if (btnPlaySim) {
@@ -1048,9 +1061,31 @@ document.addEventListener('DOMContentLoaded', () => {
                     btnCalcRisk.classList.remove('active');
                     boatPaths.forEach(b => b.isRunning = false);
                     updateBoatListUI();
+
+                    // Trigger auto-placement if enabled
+                    runEstimation();
                 }
             }
             setTimeout(() => { requestAnimationFrame(runChunk); }, 10);
+        });
+    }
+
+    const btnAutoPlace = document.getElementById('btn-auto-place-cells');
+    if (btnAutoPlace) {
+        btnAutoPlace.addEventListener('click', () => {
+            // Trigger estimation which includes computeAndDrawCellPlacement
+            runEstimation();
+
+            // Visual feedback: brief toggle or stay active
+            btnAutoPlace.classList.add('active');
+            setTimeout(() => btnAutoPlace.classList.remove('active'), 500);
+
+            // Switch to zones tab to show potential sidebar info if needed, 
+            // but primarily ensure overlay is calculated.
+            if (activeTab !== 'zones') {
+                const tabZones = document.getElementById('tab-zones');
+                if (tabZones) tabZones.click();
+            }
         });
     }
 
@@ -2363,8 +2398,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Estimation Page Logic ---
 
-    // Global store for placed cells (used for export / "view on map" button)
-    let placedCells = [];
 
     // ═══════════════════════════════════════════════════════════════
     // computeAndDrawCellPlacement
@@ -2381,204 +2414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     //       Pass 2: add extra cells in proportion to local score (hotspots)
     //  5. Draw on the overlay canvas (coloured by fill intensity)
     // ═══════════════════════════════════════════════════════════════
-    function computeAndDrawCellPlacement(finalCells, maxSpacingM) {
-        const overlayCanvas = document.getElementById('cells-overlay');
-        if (!overlayCanvas) return [];
 
-        const ppm = rulerState.pixelsPerMeter;
-
-        // Sync overlay canvas dimensions with main canvas
-        overlayCanvas.width = canvas.width;
-        overlayCanvas.height = canvas.height;
-        const oct = overlayCanvas.getContext('2d');
-        oct.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-
-        if (!ppm || !pollutionState.impactMask || !pollutionState.density) return [];
-
-        const W = canvas.width;
-        const H = canvas.height;
-        const impactMask = pollutionState.impactMask;
-        const densityArr = pollutionState.density;
-        const cols = pollutionState.cols || 1;
-        const simCellSize = 6; // px per sim cell (matches simulation grid)
-
-        // ── Step 1: collect coast pixels with a score ─────────────
-        const coastPixels = [];
-        for (let y = 0; y < H; y++) {
-            for (let x = 0; x < W; x++) {
-                const idx = y * W + x;
-                if (!impactMask[idx]) continue;
-
-                // Density at this canvas position
-                const dc = Math.floor(x / simCellSize);
-                const dr = Math.floor(y / simCellSize);
-                const didx = dr * cols + (dc || 0);
-                const density = densityArr[didx] ?? 0;
-
-                // Source proximity bonus: closer to a polluante zone centroid → more important
-                let sourceBonus = 0;
-                zones.filter(z => z.type === 'polluante').forEach(z => {
-                    if (!z.points || z.points.length === 0) return;
-                    const cx = z.points.reduce((s, p) => s + p.x, 0) / z.points.length;
-                    const cy = z.points.reduce((s, p) => s + p.y, 0) / z.points.length;
-                    const dist = Math.hypot(x - cx, y - cy);
-                    sourceBonus += Math.max(0, 1 - dist / (ppm * 50)); // decays over 50m
-                });
-
-                // Boat path proximity bonus: near a boat path → more turbulence/mixing
-                let boatBonus = 0;
-                boatPaths.forEach(bp => {
-                    if (!bp.points || bp.points.length < 2) return;
-                    for (let i = 0; i < bp.points.length - 1; i++) {
-                        const p1 = bp.points[i], p2 = bp.points[i + 1];
-                        // Point-to-segment distance
-                        const dx = p2.x - p1.x, dy = p2.y - p1.y;
-                        const len2 = dx * dx + dy * dy;
-                        let t = len2 > 0 ? ((x - p1.x) * dx + (y - p1.y) * dy) / len2 : 0;
-                        t = Math.max(0, Math.min(1, t));
-                        const nx = p1.x + t * dx, ny = p1.y + t * dy;
-                        const dist = Math.hypot(x - nx, y - ny);
-                        boatBonus += Math.max(0, 1 - dist / (ppm * 20)); // decays over 20m
-                    }
-                });
-
-                const score = density * 4 + sourceBonus * 2 + boatBonus;
-                coastPixels.push({ x, y, score });
-            }
-        }
-
-        if (coastPixels.length === 0) return [];
-
-        // ── Step 2: reduce to 1 point per metre along coast ───────
-        // Sort pixels left→right, top→bottom to get a consistent ordering
-        coastPixels.sort((a, b) => a.x !== b.x ? a.x - b.x : a.y - b.y);
-
-        const segmentScores = []; // one entry per metre-wide column
-        const pxPerMetre = ppm;
-        const totalWidth = W;
-
-        for (let col = 0; col < totalWidth; col += Math.max(1, Math.round(pxPerMetre))) {
-            const colPixels = coastPixels.filter(p =>
-                p.x >= col && p.x < col + Math.round(pxPerMetre));
-            if (colPixels.length === 0) continue;
-            const avgScore = colPixels.reduce((s, p) => s + p.score, 0) / colPixels.length;
-            // Representative point: topmost (closest to shore edge)
-            colPixels.sort((a, b) => a.y - b.y);
-            const rep = colPixels[0];
-            segmentScores.push({ x: rep.x, y: rep.y, score: avgScore, mCol: Math.round(col / pxPerMetre) });
-        }
-
-        if (segmentScores.length === 0) return [];
-
-        const totalMetres = segmentScores.length;
-        const maxScore = Math.max(...segmentScores.map(s => s.score)) || 1;
-        // Normalise scores
-        segmentScores.forEach(s => s.normScore = s.score / maxScore);
-
-        // ── Step 3: guaranteed coverage pass ──────────────────────
-        const placements = [];
-        let lastPlacedMetre = -maxSpacingM; // force first placement
-
-        for (let i = 0; i < segmentScores.length; i++) {
-            const seg = segmentScores[i];
-            const mPos = seg.mCol;
-            if (mPos - lastPlacedMetre >= maxSpacingM) {
-                placements.push({ ...seg, type: 'coverage' });
-                lastPlacedMetre = mPos;
-            }
-        }
-
-        // ── Step 4: extra cells in hotspots ───────────────────────
-        const extraNeeded = Math.max(0, finalCells - placements.length);
-        if (extraNeeded > 0) {
-            // Sort segments by score descending, pick top N that aren't already placed
-            const placed = new Set(placements.map(p => p.mCol));
-            const candidates = [...segmentScores]
-                .filter(s => !placed.has(s.mCol))
-                .sort((a, b) => b.normScore - a.normScore)
-                .slice(0, extraNeeded);
-            candidates.forEach(c => placements.push({ ...c, type: 'hotspot' }));
-        }
-
-        // Sort final placement by x for display
-        placements.sort((a, b) => a.x - b.x);
-        placedCells = placements;
-
-        // ── Step 5: draw on overlay canvas ────────────────────────
-        const cellW = Math.max(4, Math.round(pxPerMetre * 0.9));
-        const cellH = 12;
-
-        placements.forEach(cell => {
-            const intensity = cell.normScore;
-            // Colour: green (low pollution) → orange → red (high pollution)
-            const r = Math.round(intensity * 220);
-            const g = Math.round((1 - intensity) * 200 + 50);
-            const b = 80;
-            const alpha = 0.82;
-
-            // Cell body
-            oct.fillStyle = `rgba(${r},${g},${b},${alpha})`;
-            oct.strokeStyle = 'rgba(255,255,255,0.6)';
-            oct.lineWidth = 1;
-            oct.beginPath();
-            oct.roundRect(cell.x - cellW / 2, cell.y - cellH, cellW, cellH, 3);
-            oct.fill();
-            oct.stroke();
-
-            // For hotspot cells, add a small red ring
-            if (cell.type === 'hotspot') {
-                oct.strokeStyle = 'rgba(255,60,60,0.85)';
-                oct.lineWidth = 2;
-                oct.beginPath();
-                oct.arc(cell.x, cell.y - cellH / 2, cellW * 0.65, 0, Math.PI * 2);
-                oct.stroke();
-            }
-
-            // Score dot
-            oct.fillStyle = 'rgba(255,255,255,0.9)';
-            oct.beginPath();
-            oct.arc(cell.x, cell.y - cellH / 2, 2, 0, Math.PI * 2);
-            oct.fill();
-        });
-
-        // Legend
-        drawCellLegend(oct, placements.length, placements.filter(p => p.type === 'hotspot').length);
-
-        return placements;
-    }
-
-    function drawCellLegend(oct, total, hotspots) {
-        const pad = 12;
-        const w = 220, h = 90;
-        const x = oct.canvas.width - w - pad;
-        const y = pad;
-
-        oct.fillStyle = 'rgba(15,20,30,0.75)';
-        oct.beginPath();
-        oct.roundRect(x, y, w, h, 8);
-        oct.fill();
-
-        oct.font = 'bold 12px Inter, sans-serif';
-        oct.fillStyle = 'rgba(255,255,255,0.95)';
-        oct.fillText('🔲 Cellules filtrantes', x + 10, y + 20);
-
-        oct.font = '11px Inter, sans-serif';
-        oct.fillStyle = 'rgba(200,200,200,0.9)';
-        oct.fillText(`Total : ${total} cellule${total !== 1 ? 's' : ''}`, x + 10, y + 40);
-        oct.fillText(`Couverture : ${total - hotspots} régulière + ${hotspots} renforcée${hotspots !== 1 ? 's' : ''}`, x + 10, y + 56);
-
-        // Gradient key
-        const grad = oct.createLinearGradient(x + 10, 0, x + w - 10, 0);
-        grad.addColorStop(0, 'rgba(50,200,80,0.9)');
-        grad.addColorStop(0.5, 'rgba(220,150,30,0.9)');
-        grad.addColorStop(1, 'rgba(220,50,50,0.9)');
-        oct.fillStyle = grad;
-        oct.fillRect(x + 10, y + 68, w - 20, 8);
-        oct.font = '9px Inter, sans-serif';
-        oct.fillStyle = 'rgba(200,200,200,0.8)';
-        oct.fillText('faible', x + 10, y + 86);
-        oct.fillText('élevé', x + w - 35, y + 86);
-    }
 
     function updateFormulaDisplay() {
         const N = parseFloat(document.getElementById('est-moorings')?.value) || 0;
@@ -2675,6 +2511,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const actualSpacing = coastLengthM > 0 && finalCells > 0
             ? (coastLengthM / finalCells).toFixed(1)
             : '—';
+
+        // ── Affichage ─────────────────────────────────────────────
 
         // ── Affichage ─────────────────────────────────────────────
         const placeholder = document.getElementById('est-placeholder');
@@ -2779,11 +2617,11 @@ document.addEventListener('DOMContentLoaded', () => {
             `${vTotalPerYear.toFixed(1)} L ÷ (${finalCells} × ${cellCapacityL} L) = <strong style="color:${fillColor}">${fillRate}%</strong><br>${fillMsg}`,
             fillRate < 20 ? { borderColor: '#e74c3c', background: 'rgba(231,76,60,0.06)' } : {});
 
-        // Recommandation finale
         addTitle('✅ Recommandation finale');
         addRow('🔲 Cellules filtrantes',
             `<strong style="color:#27ae60; font-size:1.1em">${finalCells} cellule${finalCells !== 1 ? 's' : ''}</strong> — ${barrierLengthM} m de barrière`,
             { borderColor: 'var(--clr-primary)', background: 'var(--clr-primary-light)' });
+
 
         // Zones polluantes
         const polluantZones = zones.filter(z => z.type === 'polluante');
@@ -2804,11 +2642,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (el) el.addEventListener('input', runEstimation);
     });
 
+    // Removed listener for cbAutoPlace as it has been deleted.
+
     // Manual recalc button
     const btnRunEstimation = document.getElementById('btn-run-estimation');
     if (btnRunEstimation) btnRunEstimation.addEventListener('click', runEstimation);
 
     // Initial display
     updateFormulaDisplay();
+
 
 });
