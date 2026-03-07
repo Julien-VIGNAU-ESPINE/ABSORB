@@ -43,6 +43,20 @@
                         <label for="pollution-intensity">Opacité pollution</label>
                         <input type="range" id="pollution-intensity" min="10" max="100" value="70">
                     </div>
+                    <div class="slider-group">
+                        <label for="sim-speed">Vitesse de simulation</label>
+                        <input type="range" id="sim-speed" min="1" max="10" value="1">
+                    </div>
+                    <div class="slider-group"
+                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 12px;">
+                        <label for="cb-show-impact" style="margin-bottom: 0;">Alerte Côtes Rouges</label>
+                        <input type="checkbox" id="cb-show-impact" checked>
+                    </div>
+                    <div class="slider-group"
+                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
+                        <label for="cb-persist-impact" style="margin-bottom: 0;">Traces Indélébiles</label>
+                        <input type="checkbox" id="cb-persist-impact">
+                    </div>
                 </div>
                 <div class="sidebar-divider"></div>
                 <div class="save-load-group" style="display: flex; gap: 8px; margin-top: 8px;">
@@ -167,11 +181,15 @@
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
                         </svg>
                     </button>
-                    <button id="btn-fast-forward" class="tool-btn" title="Générer l'impact max (24h)">
+                    <button id="btn-calc-risk" class="tool-btn"
+                        title="Afficher toutes les zones à risques (Simulation 24h)">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="13 19 22 12 13 5 13 19"></polygon>
-                            <polygon points="2 19 11 12 2 5 2 19"></polygon>
+                            <path
+                                d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                            </path>
+                            <line x1="12" y1="9" x2="12" y2="13"></line>
+                            <line x1="12" y1="17" x2="12.01" y2="17"></line>
                         </svg>
                     </button>
                 </div>

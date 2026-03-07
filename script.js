@@ -23,7 +23,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddFolder = document.getElementById('btn-add-folder');
     const zoneListContainer = document.getElementById('zone-list-container');
     const btnPlaySim = document.getElementById('btn-play-sim');
-    const btnFastForward = document.getElementById('btn-fast-forward');
+    const btnCalcRisk = document.getElementById('btn-calc-risk');
+    const cbShowImpact = document.getElementById('cb-show-impact');
+    const cbPersistImpact = document.getElementById('cb-persist-impact');
+    const simSpeedInput = document.getElementById('sim-speed');
 
     // UI Tabs
     const tabZones = document.getElementById('tab-zones');
@@ -60,7 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
-    let pollutionState = { heatmapCanvas: null, impactCanvas: null };
+    let pollutionState = { heatmapCanvas: null, impactCanvas: null, impactMask: null };
 
     // Boats State
     let boatPaths = [];
@@ -162,8 +165,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
-    if (pollutionIntensityInput) pollutionIntensityInput.addEventListener('input', renderCanvas);
     if (wakePowerInput) wakePowerInput.addEventListener('input', updateSimulationAndRender);
+    if (cbShowImpact) cbShowImpact.addEventListener('change', renderCanvas);
+    if (cbPersistImpact) cbPersistImpact.addEventListener('change', renderCanvas);
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -185,6 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     waveIntensityInput.value = data.adjustments.waveIntensity || "65";
                     if (pollutionIntensityInput) pollutionIntensityInput.value = data.adjustments.pollutionIntensity || "70";
                     if (wakePowerInput) wakePowerInput.value = data.adjustments.wakePower || "50";
+                    if (cbShowImpact && data.adjustments.showImpact !== undefined) cbShowImpact.checked = data.adjustments.showImpact;
+                    if (cbPersistImpact && data.adjustments.persistImpact !== undefined) cbPersistImpact.checked = data.adjustments.persistImpact;
+                    if (simSpeedInput && data.adjustments.simSpeed !== undefined) simSpeedInput.value = data.adjustments.simSpeed;
                 }
 
                 isDrawing = false;
@@ -244,7 +251,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     brightness: brightnessInput.value,
                     waveIntensity: waveIntensityInput.value,
                     pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70",
-                    wakePower: wakePowerInput ? wakePowerInput.value : "50"
+                    wakePower: wakePowerInput ? wakePowerInput.value : "50",
+                    showImpact: cbShowImpact ? cbShowImpact.checked : true,
+                    persistImpact: cbPersistImpact ? cbPersistImpact.checked : false,
+                    simSpeed: simSpeedInput ? simSpeedInput.value : "1"
                 }
             };
 
@@ -325,6 +335,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             pollutionState.heatmapCanvas = null;
             pollutionState.impactCanvas = null;
+            pollutionState.impactMask = null;
         }
 
         renderCanvas();
@@ -419,10 +430,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.globalAlpha = 1.0;
         }
 
-        if (pollutionState.impactCanvas) {
-            ctx.drawImage(pollutionState.impactCanvas, 0, 0, canvas.width, canvas.height);
-        }
-
         // Draw saved zones
         zones.forEach(zone => {
             const zType = zoneTypes[zone.type] || zoneTypes['default'];
@@ -495,6 +502,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.restore();
             }
         });
+
+        if (pollutionState.impactCanvas && (!cbShowImpact || cbShowImpact.checked)) {
+            // Draw red warnings on top of EVERYTHING
+            ctx.drawImage(pollutionState.impactCanvas, 0, 0, canvas.width, canvas.height);
+        }
 
         if (waveState.sourceLine && waveState.sourceLine.length > 0) {
             ctx.beginPath();
@@ -845,20 +857,45 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateBoatListUI();
                 btnPlaySim.classList.add('active');
                 simulationInterval = setInterval(() => {
-                    simulationTime += 1.5; // Continue expanding infinitely
-                    boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
-                    updateSimulationAndRender();
+                    const speed = simSpeedInput ? parseInt(simSpeedInput.value) : 1;
+
+                    for (let i = 0; i < speed; i++) {
+                        simulationTime += 1.5; // Continue expanding infinitely
+                        boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
+
+                        const visibleBoats = boatPaths.filter(b => b.visible);
+                        if ((waveState.sourceLine && waveState.sourceLine.length > 2) || visibleBoats.length > 0) {
+                            runWaveSimulation();
+                        } else {
+                            waveState.heatmapCanvas = null;
+                            waveState.grid = null;
+                        }
+
+                        const hasPollution = zones.some(z => z.type === 'polluante');
+                        if (hasPollution) {
+                            runPollutionSimulation();
+                        } else {
+                            pollutionState.heatmapCanvas = null;
+                            pollutionState.impactCanvas = null;
+                        }
+                    }
+
+                    renderCanvas();
                 }, 40); // 25fps for fluid continuous motion
             }
         });
     }
 
-    if (btnFastForward) {
-        btnFastForward.addEventListener('click', () => {
-            if (btnFastForward.classList.contains('active')) return;
-            if (simulationInterval) stopSim(); // Stop live play if running
+    if (btnCalcRisk) {
+        btnCalcRisk.addEventListener('click', () => {
+            if (btnCalcRisk.classList.contains('active')) return;
+            if (simulationInterval) stopSim();
+            btnCalcRisk.classList.add('active');
 
-            btnFastForward.classList.add('active');
+            // Force show alert if user deselected it
+            if (cbShowImpact && !cbShowImpact.checked) {
+                cbShowImpact.checked = true;
+            }
 
             // Artificial start for boats explicitly
             boatPaths.forEach((b, idx) => {
@@ -869,11 +906,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             updateBoatListUI();
 
-            const fastForwardSteps = 1500; // Large chunk of steps simulating long time (~24h impact approx)
+            const fastForwardSteps = 2000;
             let progress = 0;
 
             function runChunk() {
-                const stepsPerFrame = 50; // Render to UI every 50 logical steps
+                const stepsPerFrame = 50;
                 for (let i = 0; i < stepsPerFrame; i++) {
                     simulationTime += 1.5;
                     boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
@@ -889,17 +926,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     progress++;
                 }
 
-                renderCanvas(); // Update visual feedback
+                renderCanvas();
 
                 if (progress < fastForwardSteps) {
                     requestAnimationFrame(runChunk);
                 } else {
-                    btnFastForward.classList.remove('active');
+                    btnCalcRisk.classList.remove('active');
                     boatPaths.forEach(b => b.isRunning = false);
                     updateBoatListUI();
                 }
             }
-            // Add a small initial delay to allow UI to show button active state
             setTimeout(() => { requestAnimationFrame(runChunk); }, 10);
         });
     }
@@ -1210,13 +1246,52 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!simulationInterval) {
                     btnPlaySim.classList.add('active');
                     simulationInterval = setInterval(() => {
-                        simulationTime += 1.5;
-                        boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
-                        updateSimulationAndRender();
+                        const speed = simSpeedInput ? parseInt(simSpeedInput.value) : 1;
+                        for (let i = 0; i < speed; i++) {
+                            simulationTime += 1.5;
+                            boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
+
+                            const visibleBoats = boatPaths.filter(b => b.visible);
+                            if ((waveState.sourceLine && waveState.sourceLine.length > 2) || visibleBoats.length > 0) {
+                                runWaveSimulation();
+                            } else {
+                                waveState.heatmapCanvas = null;
+                                waveState.grid = null;
+                            }
+
+                            const hasPollution = zones.some(z => z.type === 'polluante');
+                            if (hasPollution) {
+                                runPollutionSimulation();
+                            } else {
+                                pollutionState.heatmapCanvas = null;
+                                pollutionState.impactCanvas = null;
+                                pollutionState.impactMask = null;
+                            }
+                        }
+                        renderCanvas();
                     }, 40);
                 }
             }
             updateBoatListUI();
+            updateSimulationAndRender();
+        };
+
+        const btnPingPong = document.createElement('button');
+        btnPingPong.className = 'btn-toggle-folder';
+        btnPingPong.style.background = 'none';
+        btnPingPong.style.border = 'none';
+        btnPingPong.style.color = boat.pingPong ? '#f39c12' : 'inherit';
+        btnPingPong.style.cursor = 'pointer';
+        btnPingPong.title = "Mode Aller-Retour";
+        btnPingPong.innerHTML = boat.pingPong
+            ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>`
+            : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="14 5 19 10 14 15"></polyline><path d="M5 10h14"></path><path d="M5 10v9a2 2 0 0 0 2 2h4"></path></svg>`;
+
+        btnPingPong.onclick = (e) => {
+            e.stopPropagation();
+            boat.pingPong = !boat.pingPong;
+            updateBoatListUI();
+            runWaveSimulation();
             updateSimulationAndRender();
         };
 
@@ -1230,6 +1305,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         leftGroup.appendChild(btnToggleVis);
         leftGroup.appendChild(btnPlayBoat);
+        leftGroup.appendChild(btnPingPong);
         leftGroup.appendChild(titleInput);
 
         const btnDel = document.createElement('button');
@@ -1521,16 +1597,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (totalDist > 0) {
                     let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : 50) / 50.0;
                     let unmodTimeTravel = localTime * boatSpeed;
-                    let currentTravel = unmodTimeTravel % totalDist;
-                    let trailLength = 80 * powerScale; // Wake length trailing behind boat
-                    let startTravel = currentTravel - trailLength;
 
-                    let segmentsToDraw = [];
-                    if (startTravel < 0) {
-                        segmentsToDraw.push({ start: totalDist + startTravel, end: totalDist });
-                        segmentsToDraw.push({ start: 0, end: currentTravel });
+                    let currentTravel;
+                    let isReversed = false;
+
+                    if (boat.pingPong) {
+                        let loopLength = totalDist * 2;
+                        let travelInLoop = unmodTimeTravel % loopLength;
+                        if (travelInLoop <= totalDist) {
+                            currentTravel = travelInLoop;
+                            isReversed = false;
+                        } else {
+                            currentTravel = loopLength - travelInLoop;
+                            isReversed = true;
+                        }
                     } else {
-                        segmentsToDraw.push({ start: startTravel, end: currentTravel });
+                        currentTravel = unmodTimeTravel % totalDist;
+                        isReversed = false;
+                    }
+
+                    let trailLength = 80 * powerScale; // Wake length trailing behind boat
+                    let segmentsToDraw = [];
+
+                    if (boat.pingPong) {
+                        if (isReversed) {
+                            segmentsToDraw.push({ start: currentTravel, end: Math.min(totalDist, currentTravel + trailLength) });
+                        } else {
+                            segmentsToDraw.push({ start: Math.max(0, currentTravel - trailLength), end: currentTravel });
+                        }
+                    } else {
+                        let startTravel = currentTravel - trailLength;
+                        if (startTravel < 0) {
+                            segmentsToDraw.push({ start: totalDist + startTravel, end: totalDist });
+                            segmentsToDraw.push({ start: 0, end: currentTravel });
+                        } else {
+                            segmentsToDraw.push({ start: startTravel, end: currentTravel });
+                        }
                     }
 
                     offCtx.beginPath();
@@ -1567,12 +1669,17 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }
                                 offCtx.lineTo(p2x, p2y);
 
-                                // If this is close to the head
-                                if (Math.abs(overlapEnd - currentTravel) < 0.001) {
+                                // Detect the head
+                                if (!isReversed && Math.abs(overlapEnd - currentTravel) < 0.001) {
                                     headPx = p2x;
                                     headPy = p2y;
                                     headDx = seg.dx;
                                     headDy = seg.dy;
+                                } else if (isReversed && Math.abs(overlapStart - currentTravel) < 0.001) {
+                                    headPx = p1x;
+                                    headPy = p1y;
+                                    headDx = -seg.dx;
+                                    headDy = -seg.dy;
                                 }
                             }
                             traversed = segEnd;
@@ -1913,24 +2020,21 @@ document.addEventListener('DOMContentLoaded', () => {
                     d01 * (1 - tx) * ty +
                     d11 * tx * ty;
 
-                let diffuse = 0;
-                if (vMag > 0.05) {
-                    let sumD = 0; let countD = 0;
-                    for (let oy = -1; oy <= 1; oy++) {
-                        for (let ox = -1; ox <= 1; ox++) {
-                            let nx = x + ox, ny = y + oy;
-                            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && obstacles[ny * cols + nx] === 0) {
-                                sumD += density[ny * cols + nx];
-                                countD++;
-                            }
+                // Always calculate diffuse to allow natural baseline spreading of oil spills
+                let sumD = 0; let countD = 0;
+                for (let oy = -1; oy <= 1; oy++) {
+                    for (let ox = -1; ox <= 1; ox++) {
+                        let nx = x + ox, ny = y + oy;
+                        if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && obstacles[ny * cols + nx] === 0) {
+                            sumD += density[ny * cols + nx];
+                            countD++;
                         }
                     }
-                    diffuse = sumD / countD;
-                } else {
-                    diffuse = interp;
                 }
+                let diffuse = sumD / countD;
 
-                let mixRate = Math.min(1.0, vMag * 0.8); // Increased diffusion mixing rate
+                // Mix rate based on wave velocity + a 4% permanent baseline diffusion for 24h risk
+                let mixRate = Math.min(1.0, vMag * 0.8 + 0.04);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
                 // Pollution no longer evaporates (continuous simulation)
@@ -1985,8 +2089,14 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate impacted coastlines
         const impactImgData = offCtx.createImageData(cols, rows);
         let hasImpact = false;
-        const impactThreshold = 0.05; // Density threshold to trigger coast impact
+        const impactThreshold = 0.01; // Lowered threshold to pick up thin trails
         const checkRadius = 2; // How far to look for pollution
+
+        if (!pollutionState.impactMask || pollutionState.impactMask.length !== numCells) {
+            pollutionState.impactMask = new Uint8Array(numCells);
+        }
+
+        const isPersistent = cbPersistImpact && cbPersistImpact.checked;
 
         for (let y = checkRadius; y < rows - checkRadius; y++) {
             for (let x = checkRadius; x < cols - checkRadius; x++) {
@@ -2004,7 +2114,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (isImpacted) break;
                     }
 
-                    if (isImpacted) {
+                    if (isPersistent && isImpacted) {
+                        pollutionState.impactMask[i] = 1;
+                    }
+
+                    if (isImpacted || (isPersistent && pollutionState.impactMask[i] === 1)) {
                         impactImgData.data[i * 4] = 255;     // Base Red
                         impactImgData.data[i * 4 + 1] = 0;
                         impactImgData.data[i * 4 + 2] = 0;
