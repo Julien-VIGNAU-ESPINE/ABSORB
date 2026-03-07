@@ -7,9 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const ctx = canvas.getContext('2d');
     const btnReset = document.getElementById('btn-reset');
 
-    // Image Adjustments
     const brightnessInput = document.getElementById('img-brightness');
+    const waveForceInput = document.getElementById('wave-force');
     const waveIntensityInput = document.getElementById('wave-intensity');
+    const pollutionForceInput = document.getElementById('pollution-force');
     const pollutionIntensityInput = document.getElementById('pollution-intensity');
 
     // UI Controls for drawing
@@ -123,10 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
         handleFiles(this.files);
     });
 
-    // Handle Image Adjustments
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
     if (pollutionIntensityInput) pollutionIntensityInput.addEventListener('input', renderCanvas);
+    if (waveForceInput) waveForceInput.addEventListener('input', updateSimulationAndRender);
+    if (pollutionForceInput) pollutionForceInput.addEventListener('input', updateSimulationAndRender);
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -143,6 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     brightnessInput.value = data.adjustments.brightness || "100";
                     waveIntensityInput.value = data.adjustments.waveIntensity || "65";
                     if (pollutionIntensityInput) pollutionIntensityInput.value = data.adjustments.pollutionIntensity || "70";
+                    if (waveForceInput) waveForceInput.value = data.adjustments.waveForce || "30";
+                    if (pollutionForceInput) pollutionForceInput.value = data.adjustments.pollutionForce || "70";
                 }
 
                 isDrawing = false;
@@ -197,7 +201,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 adjustments: {
                     brightness: brightnessInput.value,
                     waveIntensity: waveIntensityInput.value,
-                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70"
+                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70",
+                    waveForce: waveForceInput ? waveForceInput.value : "30",
+                    pollutionForce: pollutionForceInput ? pollutionForceInput.value : "70"
                 }
             };
 
@@ -268,6 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
             runWaveSimulation();
         } else {
             waveState.heatmapCanvas = null;
+            waveState.grid = null;
         }
 
         const hasPollution = zones.some(z => z.type === 'polluante');
@@ -316,6 +323,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 brightnessInput.value = "100";
                 waveIntensityInput.value = "65";
                 if (pollutionIntensityInput) pollutionIntensityInput.value = "70";
+                if (waveForceInput) waveForceInput.value = "30";
+                if (pollutionForceInput) pollutionForceInput.value = "70";
                 setTool('draw'); // Reset to draw tool
                 toolBtns.forEach(b => {
                     b.classList.remove('active');
@@ -1133,10 +1142,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let head = 0;
         let maxDist = 0;
+        const maxAllowedDist = waveForceInput ? parseInt(waveForceInput.value) : 30;
 
         function check(nIdx, nd, nx, ny) {
             if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
+                if (obstacles[nIdx] === 0 && grid[nIdx] === -1 && nd <= maxAllowedDist) {
                     grid[nIdx] = nd;
                     if (nd > maxDist) maxDist = nd;
                     queue.push(nIdx);
@@ -1192,6 +1202,8 @@ document.addEventListener('DOMContentLoaded', () => {
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
 
         waveState.heatmapCanvas = heatCanvas;
+        waveState.grid = grid;
+        waveState.maxAllowedDist = maxAllowedDist;
     }
 
     function runPollutionSimulation() {
@@ -1289,13 +1301,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let head = 0;
         let maxDist = 0;
+        const maxAllowedDist = pollutionForceInput ? parseInt(pollutionForceInput.value) : 70;
 
         function check(nIdx, nd, nx, ny) {
             if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
                 if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
-                    grid[nIdx] = nd;
-                    if (nd > maxDist) maxDist = nd;
-                    queue.push(nIdx);
+                    let localMaxDist = maxAllowedDist;
+                    // Boost pollution propagation if traversing waves
+                    if (waveState.grid && waveState.grid[nIdx] !== -1) {
+                        const wDist = waveState.grid[nIdx];
+                        const wMax = waveState.maxAllowedDist || 30;
+                        const waveStrength = Math.max(0, 1 - (wDist / wMax));
+                        // Up to triples the propagation distance in strong waves
+                        localMaxDist += waveStrength * wMax * 2.0;
+                    }
+                    if (nd <= localMaxDist) {
+                        grid[nIdx] = nd;
+                        if (nd > maxDist) maxDist = nd;
+                        queue.push(nIdx);
+                    }
                 }
             }
         }
