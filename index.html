@@ -36,6 +36,10 @@
                         <input type="range" id="wave-intensity" min="10" max="100" value="65">
                     </div>
                     <div class="slider-group">
+                        <label for="wake-power">Puissance Sillage</label>
+                        <input type="range" id="wake-power" min="10" max="150" value="50">
+                    </div>
+                    <div class="slider-group">
                         <label for="pollution-intensity">Opacité pollution</label>
                         <input type="range" id="pollution-intensity" min="10" max="100" value="70">
                     </div>
@@ -49,14 +53,15 @@
                     <input type="file" id="load-file-input" accept=".zip,.json" hidden>
                 </div>
                 <hr class="sidebar-divider" style="margin-top: 12px; margin-bottom: 8px;">
-                
+
                 <div class="sidebar-tabs" style="display: flex; gap: 8px; margin-bottom: 12px;">
                     <button id="tab-zones" class="btn-secondary tab-btn active" style="flex: 1;">Zones</button>
                     <button id="tab-boats" class="btn-secondary tab-btn" style="flex: 1;">Bateaux</button>
                 </div>
 
                 <div id="zones-section">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <h2>Zones définies</h2>
                         <button id="btn-add-folder" class="btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;"
                             title="Créer un nouveau dossier">+ Dossier</button>
@@ -65,7 +70,8 @@
                 </div>
 
                 <div id="boats-section" class="hidden">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                         <h2>Trajets Bateaux</h2>
                     </div>
                     <div id="boat-list-container" class="zone-list"></div>
@@ -159,6 +165,13 @@
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                        </svg>
+                    </button>
+                    <button id="btn-fast-forward" class="tool-btn" title="Générer l'impact max (24h)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="13 19 22 12 13 5 13 19"></polygon>
+                            <polygon points="2 19 11 12 2 5 2 19"></polygon>
                         </svg>
                     </button>
                 </div>

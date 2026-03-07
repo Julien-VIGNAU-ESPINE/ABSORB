@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const brightnessInput = document.getElementById('img-brightness');
     const waveIntensityInput = document.getElementById('wave-intensity');
     const pollutionIntensityInput = document.getElementById('pollution-intensity');
+    const wakePowerInput = document.getElementById('wake-power');
 
     // UI Controls for drawing
     const instructionText = document.getElementById('instruction-text');
@@ -22,6 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddFolder = document.getElementById('btn-add-folder');
     const zoneListContainer = document.getElementById('zone-list-container');
     const btnPlaySim = document.getElementById('btn-play-sim');
+    const btnFastForward = document.getElementById('btn-fast-forward');
 
     // UI Tabs
     const tabZones = document.getElementById('tab-zones');
@@ -58,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
-    let pollutionState = { heatmapCanvas: null };
+    let pollutionState = { heatmapCanvas: null, impactCanvas: null };
 
     // Boats State
     let boatPaths = [];
@@ -161,6 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
     if (pollutionIntensityInput) pollutionIntensityInput.addEventListener('input', renderCanvas);
+    if (wakePowerInput) wakePowerInput.addEventListener('input', updateSimulationAndRender);
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -181,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     brightnessInput.value = data.adjustments.brightness || "100";
                     waveIntensityInput.value = data.adjustments.waveIntensity || "65";
                     if (pollutionIntensityInput) pollutionIntensityInput.value = data.adjustments.pollutionIntensity || "70";
+                    if (wakePowerInput) wakePowerInput.value = data.adjustments.wakePower || "50";
                 }
 
                 isDrawing = false;
@@ -239,7 +243,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 adjustments: {
                     brightness: brightnessInput.value,
                     waveIntensity: waveIntensityInput.value,
-                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70"
+                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70",
+                    wakePower: wakePowerInput ? wakePowerInput.value : "50"
                 }
             };
 
@@ -319,6 +324,7 @@ document.addEventListener('DOMContentLoaded', () => {
             runPollutionSimulation();
         } else {
             pollutionState.heatmapCanvas = null;
+            pollutionState.impactCanvas = null;
         }
 
         renderCanvas();
@@ -413,6 +419,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.globalAlpha = 1.0;
         }
 
+        if (pollutionState.impactCanvas) {
+            ctx.drawImage(pollutionState.impactCanvas, 0, 0, canvas.width, canvas.height);
+        }
+
         // Draw saved zones
         zones.forEach(zone => {
             const zType = zoneTypes[zone.type] || zoneTypes['default'];
@@ -458,6 +468,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.closePath();
                 ctx.fillStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
                 ctx.fill();
+            }
+
+            // Draw moving boat if running and has current head position
+            if (boat.currentHead) {
+                const { x, y, dx, dy } = boat.currentHead;
+                const angle = Math.atan2(dy, dx);
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+
+                // Draw a distinct boat shape (triangle pointing right since we rotated)
+                ctx.beginPath();
+                ctx.moveTo(18, 0); // Nose
+                ctx.lineTo(-8, 10); // Back Right
+                ctx.lineTo(-3, 0); // Back Center
+                ctx.lineTo(-8, -10); // Back Left
+                ctx.closePath();
+
+                ctx.fillStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#ffffff';
+                ctx.fill();
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.restore();
             }
         });
 
@@ -815,6 +850,57 @@ document.addEventListener('DOMContentLoaded', () => {
                     updateSimulationAndRender();
                 }, 40); // 25fps for fluid continuous motion
             }
+        });
+    }
+
+    if (btnFastForward) {
+        btnFastForward.addEventListener('click', () => {
+            if (btnFastForward.classList.contains('active')) return;
+            if (simulationInterval) stopSim(); // Stop live play if running
+
+            btnFastForward.classList.add('active');
+
+            // Artificial start for boats explicitly
+            boatPaths.forEach((b, idx) => {
+                b.isRunning = true;
+                if (b.time === undefined || b.time <= 0) {
+                    b.time = -idx * 150.0;
+                }
+            });
+            updateBoatListUI();
+
+            const fastForwardSteps = 1500; // Large chunk of steps simulating long time (~24h impact approx)
+            let progress = 0;
+
+            function runChunk() {
+                const stepsPerFrame = 50; // Render to UI every 50 logical steps
+                for (let i = 0; i < stepsPerFrame; i++) {
+                    simulationTime += 1.5;
+                    boatPaths.forEach(b => { if (b.isRunning) b.time = (b.time || 0) + 1.5; });
+
+                    const visibleBoats = boatPaths.filter(b => b.visible);
+                    if ((waveState.sourceLine && waveState.sourceLine.length > 2) || visibleBoats.length > 0) {
+                        runWaveSimulation();
+                    }
+                    const hasPollution = zones.some(z => z.type === 'polluante');
+                    if (hasPollution) {
+                        runPollutionSimulation();
+                    }
+                    progress++;
+                }
+
+                renderCanvas(); // Update visual feedback
+
+                if (progress < fastForwardSteps) {
+                    requestAnimationFrame(runChunk);
+                } else {
+                    btnFastForward.classList.remove('active');
+                    boatPaths.forEach(b => b.isRunning = false);
+                    updateBoatListUI();
+                }
+            }
+            // Add a small initial delay to allow UI to show button active state
+            setTimeout(() => { requestAnimationFrame(runChunk); }, 10);
         });
     }
 
@@ -1433,9 +1519,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 if (totalDist > 0) {
+                    let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : 50) / 50.0;
                     let unmodTimeTravel = localTime * boatSpeed;
                     let currentTravel = unmodTimeTravel % totalDist;
-                    let trailLength = 80; // Wake length trailing behind boat
+                    let trailLength = 80 * powerScale; // Wake length trailing behind boat
                     let startTravel = currentTravel - trailLength;
 
                     let segmentsToDraw = [];
@@ -1506,6 +1593,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Update dynamic head direction so pollutants drag locally
                     waveState.boatList[bIdx] = { dx: headDx, dy: headDy };
+                    boat.currentHead = { x: headPx, y: headPy, dx: headDx, dy: headDy };
                 }
             } else if (boat.points.length === 1) {
                 offCtx.beginPath();
@@ -1757,8 +1845,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             let turbulentX = -gradY * Math.sin(d * 0.15 + simulationTime * 0.3);
                             let turbulentY = gradX * Math.cos(d * 0.15 + simulationTime * 0.3);
 
-                            vxField[i] = (gradX * 0.8 + bDX * 5.0 + turbulentX * 1.2) * waveStrength;
-                            vyField[i] = (gradY * 0.8 + bDY * 5.0 + turbulentY * 1.2) * waveStrength;
+                            let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : 50) / 50.0;
+
+                            vxField[i] = (gradX * 0.8 + bDX * 5.0 * powerScale + turbulentX * 1.2) * waveStrength;
+                            vyField[i] = (gradY * 0.8 + bDY * 5.0 * powerScale + turbulentY * 1.2) * waveStrength;
                         }
                     }
                 }
@@ -1798,7 +1888,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
 
-                let speedScale = 1.5;
+                let speedScale = 3.5; // Increased wave push speed for pollution
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
 
@@ -1840,11 +1930,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     diffuse = interp;
                 }
 
-                let mixRate = Math.min(1.0, vMag * 0.3);
+                let mixRate = Math.min(1.0, vMag * 0.8); // Increased diffusion mixing rate
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
-                // pollution slightly evaporates over time
-                finalD *= 0.998;
+                // Pollution no longer evaporates (continuous simulation)
+                // finalD *= 0.998; 
+
                 if (finalD < 0.005) finalD = 0;
 
                 newDensity[i] = finalD;
@@ -1890,6 +1981,60 @@ document.addEventListener('DOMContentLoaded', () => {
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
 
         pollutionState.heatmapCanvas = heatCanvas;
+
+        // Calculate impacted coastlines
+        const impactImgData = offCtx.createImageData(cols, rows);
+        let hasImpact = false;
+        const impactThreshold = 0.05; // Density threshold to trigger coast impact
+        const checkRadius = 2; // How far to look for pollution
+
+        for (let y = checkRadius; y < rows - checkRadius; y++) {
+            for (let x = checkRadius; x < cols - checkRadius; x++) {
+                let i = y * cols + x;
+                if (obstacles[i] === 1) { // It's a coast/obstacle
+                    let isImpacted = false;
+                    for (let oy = -checkRadius; oy <= checkRadius; oy++) {
+                        for (let ox = -checkRadius; ox <= checkRadius; ox++) {
+                            let ni = (y + oy) * cols + (x + ox);
+                            if (obstacles[ni] === 0 && density[ni] > impactThreshold) {
+                                isImpacted = true;
+                                break;
+                            }
+                        }
+                        if (isImpacted) break;
+                    }
+
+                    if (isImpacted) {
+                        impactImgData.data[i * 4] = 255;     // Base Red
+                        impactImgData.data[i * 4 + 1] = 0;
+                        impactImgData.data[i * 4 + 2] = 0;
+                        impactImgData.data[i * 4 + 3] = 255;
+                        hasImpact = true;
+                    }
+                }
+            }
+        }
+
+        if (hasImpact) {
+            const impactCanvas = document.createElement('canvas');
+            impactCanvas.width = canvas.width;
+            impactCanvas.height = canvas.height;
+            const ictx = impactCanvas.getContext('2d');
+
+            offCtx.putImageData(impactImgData, 0, 0);
+
+            // Apply glow and scaling for thick red outline
+            ictx.imageSmoothingEnabled = false;
+            ictx.shadowColor = 'rgba(255, 0, 0, 1)';
+            ictx.shadowBlur = 15;
+            // Draw twice to intensify glow!
+            ictx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+            ictx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+
+            pollutionState.impactCanvas = impactCanvas;
+        } else {
+            pollutionState.impactCanvas = null;
+        }
     }
 
     function hslToRgb(h, s, l) {
