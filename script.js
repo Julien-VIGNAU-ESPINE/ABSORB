@@ -1252,13 +1252,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function runPollutionSimulation() {
-        // Use a 6px grid for decent resolution and good performance
         const cellSize = 6;
         const cols = Math.ceil(canvas.width / cellSize);
         const rows = Math.ceil(canvas.height / cellSize);
+        const numCells = cols * rows;
 
-        const grid = new Float32Array(cols * rows).fill(-1);
-        const obstacles = new Uint8Array(cols * rows);
+        if (!pollutionState.density || pollutionState.cols !== cols || pollutionState.rows !== rows) {
+            pollutionState.density = new Float32Array(numCells).fill(0);
+            pollutionState.cols = cols;
+            pollutionState.rows = rows;
+        }
+
+        const density = pollutionState.density;
+        const newDensity = new Float32Array(numCells).fill(0);
+        const obstacles = new Uint8Array(numCells);
 
         const offCanvas = document.createElement('canvas');
         offCanvas.width = cols;
@@ -1266,11 +1273,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
 
         // Draw obstacles mask
-        offCtx.fillStyle = '#000000'; // Black = Obstacle globally
+        offCtx.fillStyle = '#000000';
         offCtx.fillRect(0, 0, cols, rows);
         offCtx.scale(1 / cellSize, 1 / cellSize);
 
-        // 1. Les zones explicitement définies comme 'Eau' ou 'Polluante' sont navigables (espace de propagation)
+        // 1. Les zones explicitement définies comme 'Eau' ou 'Polluante' sont navigables
         zones.forEach(zone => {
             if (zone.type === 'eau' || zone.type === 'polluante') {
                 offCtx.beginPath();
@@ -1281,7 +1288,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 offCtx.closePath();
-                offCtx.fillStyle = '#ffffff'; // White = Walkable
+                offCtx.fillStyle = '#ffffff';
                 offCtx.fill();
             }
         });
@@ -1297,23 +1304,22 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 offCtx.closePath();
-                offCtx.fillStyle = '#000000'; // Black = Obstacle
+                offCtx.fillStyle = '#000000';
                 offCtx.fill();
             }
         });
 
         const maskData = offCtx.getImageData(0, 0, cols, rows).data;
-        for (let i = 0; i < cols * rows; i++) {
-            // Read RED channel
+        for (let i = 0; i < numCells; i++) {
             if (maskData[i * 4] < 128) {
                 obstacles[i] = 1;
             }
         }
 
-        // Draw source areas using polluante zones
+        // Generate source areas
         offCtx.resetTransform();
         offCtx.clearRect(0, 0, cols, rows);
-        offCtx.fillStyle = '#000000'; // black bg
+        offCtx.fillStyle = '#000000';
         offCtx.fillRect(0, 0, cols, rows);
         offCtx.scale(1 / cellSize, 1 / cellSize);
 
@@ -1327,80 +1333,156 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 offCtx.closePath();
-                offCtx.fillStyle = '#ffffff'; // White = Source
+                offCtx.fillStyle = '#ffffff';
                 offCtx.fill();
             }
         });
 
         const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
-        const queue = [];
-
-        for (let i = 0; i < cols * rows; i++) {
+        
+        // Feed pollution source continuously
+        for (let i = 0; i < numCells; i++) {
             if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
-                grid[i] = 0;
-                queue.push(i);
+                density[i] = Math.min(1.0, density[i] + 0.1); 
             }
         }
 
-        if (queue.length === 0) return;
+        const wGrid = waveState.grid;
+        const wMax = waveState.maxAllowedDist || 1;
+        let bDX = waveState.boatDir ? waveState.boatDir.dx : 0;
+        let bDY = waveState.boatDir ? waveState.boatDir.dy : 0;
 
-        let head = 0;
-        let maxDist = 0;
-        const maxAllowedDist = Math.max(1, simulationTime);
+        const vxField = new Float32Array(numCells);
+        const vyField = new Float32Array(numCells);
 
-        function check(nIdx, nd, nx, ny, fromX, fromY) {
-            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
-                if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
-                    let localMaxDist = maxAllowedDist;
-                    let movPenalty = 1;
-
-                    // Boost pollution propagation if traversing waves
-                    if (waveState.grid && waveState.grid[nIdx] !== -1) {
-                        const wDist = waveState.grid[nIdx];
-                        const wMax = waveState.maxAllowedDist || 30;
-                        const waveStrength = Math.max(0, 1 - (wDist / wMax));
-
-                        if (waveState.boatDir && (waveState.boatDir.dx !== 0 || waveState.boatDir.dy !== 0)) {
-                            let movDX = nx - fromX;
-                            let movDY = ny - fromY;
-                            let movLen = Math.hypot(movDX, movDY);
-                            if (movLen > 0) {
-                                movDX /= movLen; movDY /= movLen;
-                                let dot = movDX * waveState.boatDir.dx + movDY * waveState.boatDir.dy;
-                                let effect = dot * waveStrength;
-                                // Fast in boat direction, slow against boat direction
-                                movPenalty = effect > 0 ? (1 - 0.85 * effect) : (1 - 1.5 * effect);
+        if (wGrid) {
+            for (let y = 1; y < rows - 1; y++) {
+                for (let x = 1; x < cols - 1; x++) {
+                    let i = y * cols + x;
+                    if (obstacles[i] === 1) continue;
+                    
+                    let d = wGrid[i];
+                    if (d !== -1) {
+                        let waveStrength = Math.max(0, 1 - (d / wMax));
+                        waveStrength = waveStrength * waveStrength; // falloff
+                        
+                        if (waveStrength > 0.01) {
+                            let left = wGrid[i - 1] !== -1 ? wGrid[i - 1] : d;
+                            let right = wGrid[i + 1] !== -1 ? wGrid[i + 1] : d;
+                            let up = wGrid[i - cols] !== -1 ? wGrid[i - cols] : d;
+                            let down = wGrid[i + cols] !== -1 ? wGrid[i + cols] : d;
+                            
+                            let dx = right - left;
+                            let dy = down - up;
+                            let len = Math.hypot(dx, dy);
+                            
+                            if (len > 0) {
+                                dx /= len; dy /= len;
                             }
+                            
+                            // turbulence
+                            let turbulentX = -dy * Math.sin(d * 0.15 + simulationTime * 0.3);
+                            let turbulentY = dx * Math.cos(d * 0.15 + simulationTime * 0.3);
+                            
+                            vxField[i] = (dx * 1.0 + bDX * 2.5 + turbulentX * 1.5) * waveStrength;
+                            vyField[i] = (dy * 1.0 + bDY * 2.5 + turbulentY * 1.5) * waveStrength;
                         }
-
-                        // Up to triples the propagation distance in strong waves
-                        localMaxDist += waveStrength * wMax * 2.0;
-                    }
-
-                    let nextDist = nd + movPenalty;
-                    if (nextDist <= localMaxDist) {
-                        grid[nIdx] = nextDist;
-                        if (nextDist > maxDist) maxDist = nextDist;
-                        queue.push(nIdx);
                     }
                 }
             }
         }
 
-        // BFS distance calculation
-        while (head < queue.length) {
-            const curr = queue[head++];
-            const d = grid[curr];
-            const cy = Math.floor(curr / cols);
-            const cx = curr % cols;
-
-            check(curr - cols, d, cx, cy - 1, cx, cy);
-            check(curr + cols, d, cx, cy + 1, cx, cy);
-            check(curr - 1, d, cx - 1, cy, cx, cy);
-            check(curr + 1, d, cx + 1, cy, cx, cy);
+        const smoothVx = new Float32Array(numCells);
+        const smoothVy = new Float32Array(numCells);
+        for (let y = 1; y < rows - 1; y++) {
+            for (let x = 1; x < cols - 1; x++) {
+                let i = y * cols + x;
+                if (obstacles[i] === 1) continue;
+                let sumX = 0, sumY = 0, c = 0;
+                for(let oy = -1; oy <= 1; oy++) {
+                    for(let ox = -1; ox <= 1; ox++) {
+                        let ni = (y+oy)*cols + (x+ox);
+                        if (obstacles[ni] === 0) {
+                            sumX += vxField[ni];
+                            sumY += vyField[ni];
+                            c++;
+                        }
+                    }
+                }
+                smoothVx[i] = sumX / c;
+                smoothVy[i] = sumY / c;
+            }
         }
 
-        // Generate heatmap visual
+        let maxDensity = 0;
+
+        for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
+                let i = y * cols + x;
+                if (obstacles[i] === 1) continue;
+
+                let vx = smoothVx[i];
+                let vy = smoothVy[i];
+                let vMag = Math.hypot(vx, vy);
+                
+                let speedScale = 1.5; 
+                let srcX = x - vx * speedScale;
+                let srcY = y - vy * speedScale;
+                
+                srcX = Math.max(0, Math.min(cols - 1.001, srcX));
+                srcY = Math.max(0, Math.min(rows - 1.001, srcY));
+                
+                let x0 = Math.floor(srcX);
+                let x1 = x0 + 1;
+                let y0 = Math.floor(srcY);
+                let y1 = y0 + 1;
+                let tx = srcX - x0;
+                let ty = srcY - y0;
+                
+                let d00 = density[y0 * cols + x0];
+                let d10 = density[y0 * cols + x1];
+                let d01 = density[y1 * cols + x0];
+                let d11 = density[y1 * cols + x1];
+                
+                let interp = 
+                    d00 * (1 - tx) * (1 - ty) +
+                    d10 * tx * (1 - ty) +
+                    d01 * (1 - tx) * ty +
+                    d11 * tx * ty;
+                    
+                let diffuse = 0;
+                if (vMag > 0.05) {
+                    let sumD = 0; let countD = 0;
+                    for (let oy = -1; oy <= 1; oy++) {
+                        for (let ox = -1; ox <= 1; ox++) {
+                            let nx = x + ox, ny = y + oy;
+                            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && obstacles[ny * cols + nx] === 0) {
+                                sumD += density[ny * cols + nx];
+                                countD++;
+                            }
+                        }
+                    }
+                    diffuse = sumD / countD;
+                } else {
+                    diffuse = interp;
+                }
+                
+                let mixRate = Math.min(1.0, vMag * 0.3);
+                let finalD = interp * (1 - mixRate) + diffuse * mixRate;
+                
+                // pollution slightly evaporates over time
+                finalD *= 0.998;
+                if (finalD < 0.005) finalD = 0;
+                
+                newDensity[i] = finalD;
+                if (finalD > maxDensity) maxDensity = finalD;
+            }
+        }
+
+        for (let i = 0; i < numCells; i++) {
+             density[i] = newDensity[i];
+        }
+
         const heatCanvas = document.createElement('canvas');
         heatCanvas.width = canvas.width;
         heatCanvas.height = canvas.height;
@@ -1410,29 +1492,28 @@ document.addEventListener('DOMContentLoaded', () => {
         offCtx.clearRect(0, 0, cols, rows);
         const heatImgData = offCtx.createImageData(cols, rows);
 
-        for (let i = 0; i < cols * rows; i++) {
-            const d = grid[i];
-            if (d >= 0 && obstacles[i] === 0) {
-                let ratio = d / Math.max(1, maxDist);
-                // Curve slightly to emphasize source areas
-                ratio = Math.pow(ratio, 0.8);
-                // Toxic pollution colors: Source is yellow/orange (30-60 hue), spreading to green (120-150 hue)
-                const hue = 60 + (ratio * 80); // 60 (Yellow) to 140 (Green)
+        for (let i = 0; i < numCells; i++) {
+            let d = density[i];
+            if (d > 0 && obstacles[i] === 0) {
+                let val = d / Math.max(0.5, maxDensity);
+                val = Math.min(1.0, val);
+                
+                const hue = 60 + ((1.0 - val) * 80); // Peak is 60 (yellow), fades to 140 (green)
                 const rgb = hslToRgb(hue / 360, 0.9, 0.6);
-
-                const fadeAlpha = Math.max(0, 1 - (d / 300)); // Polution will fade and "s'estomper" over distance
-
+                
+                let alpha = Math.min(1.0, val * 2.0);
+                
                 heatImgData.data[i * 4] = rgb[0];
                 heatImgData.data[i * 4 + 1] = rgb[1];
                 heatImgData.data[i * 4 + 2] = rgb[2];
-                heatImgData.data[i * 4 + 3] = 255 * fadeAlpha * (1 - ratio);
+                heatImgData.data[i * 4 + 3] = 255 * alpha;
             }
         }
 
         offCtx.putImageData(heatImgData, 0, 0);
 
         hctx.imageSmoothingEnabled = true;
-        hctx.filter = 'blur(15px)';
+        hctx.filter = 'blur(10px)';
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
 
         pollutionState.heatmapCanvas = heatCanvas;
