@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Image Adjustments
     const brightnessInput = document.getElementById('img-brightness');
     const waveIntensityInput = document.getElementById('wave-intensity');
+    const pollutionIntensityInput = document.getElementById('pollution-intensity');
 
     // UI Controls for drawing
     const instructionText = document.getElementById('instruction-text');
@@ -19,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const toolBtns = document.querySelectorAll('.tool-btn');
     const sidebarPanel = document.getElementById('sidebar-panel');
     const toolsPanel = document.getElementById('tools-panel');
+    const btnAddFolder = document.getElementById('btn-add-folder');
     const zoneListContainer = document.getElementById('zone-list-container');
 
     // Save & Load
@@ -32,19 +34,24 @@ document.addEventListener('DOMContentLoaded', () => {
         'bateaux': { label: 'Bateaux', color: 'rgba(231, 76, 60, 0.3)', border: 'rgba(231, 76, 60, 0.8)' },
         'ponton': { label: 'Ponton', color: 'rgba(149, 165, 166, 0.3)', border: 'rgba(149, 165, 166, 0.8)' },
         'terre': { label: 'Terre', color: 'rgba(46, 204, 113, 0.3)', border: 'rgba(46, 204, 113, 0.8)' },
-        'eau': { label: 'Eau', color: 'rgba(52, 152, 219, 0.3)', border: 'rgba(52, 152, 219, 0.8)' }
+        'eau': { label: 'Eau', color: 'rgba(52, 152, 219, 0.3)', border: 'rgba(52, 152, 219, 0.8)' },
+        'polluante': { label: 'Polluante', color: 'rgba(155, 89, 182, 0.3)', border: 'rgba(155, 89, 182, 0.8)' }
     };
 
     // State Variables
     let currentImage = null;
     let zones = [];
+    let folders = [];
     let currentPolygon = [];
     let isDrawing = false;
     let selectedZoneId = null;
+    let selectedFolderId = null;
     let zoneCounter = 1;
+    let folderCounter = 1;
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
+    let pollutionState = { heatmapCanvas: null };
 
     // Zoom State
     let currentZoom = 1;
@@ -119,6 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle Image Adjustments
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
+    if (pollutionIntensityInput) pollutionIntensityInput.addEventListener('input', renderCanvas);
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -126,12 +134,15 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onload = () => {
                 currentImage = img;
                 zones = data.zones || [];
+                folders = data.folders || [];
                 zoneCounter = data.zoneCounter || 1;
+                folderCounter = data.folderCounter || 1;
                 waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
 
                 if (data.adjustments) {
                     brightnessInput.value = data.adjustments.brightness || "100";
                     waveIntensityInput.value = data.adjustments.waveIntensity || "65";
+                    if (pollutionIntensityInput) pollutionIntensityInput.value = data.adjustments.pollutionIntensity || "70";
                 }
 
                 isDrawing = false;
@@ -177,13 +188,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const data = {
                 imageFilename: imageFilename,
                 zones: zones,
+                folders: folders,
                 zoneCounter: zoneCounter,
+                folderCounter: folderCounter,
                 waveState: {
                     sourceLine: waveState.sourceLine
                 },
                 adjustments: {
                     brightness: brightnessInput.value,
-                    waveIntensity: waveIntensityInput.value
+                    waveIntensity: waveIntensityInput.value,
+                    pollutionIntensity: pollutionIntensityInput ? pollutionIntensityInput.value : "70"
                 }
             };
 
@@ -255,6 +269,14 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             waveState.heatmapCanvas = null;
         }
+
+        const hasPollution = zones.some(z => z.type === 'polluante');
+        if (hasPollution) {
+            runPollutionSimulation();
+        } else {
+            pollutionState.heatmapCanvas = null;
+        }
+
         renderCanvas();
     }
 
@@ -284,12 +306,16 @@ document.addEventListener('DOMContentLoaded', () => {
             img.onload = () => {
                 currentImage = img;
                 zones = [];
+                folders = [];
                 currentPolygon = [];
                 isDrawing = false;
                 selectedZoneId = null;
+                selectedFolderId = null;
                 zoneCounter = 1;
+                folderCounter = 1;
                 brightnessInput.value = "100";
                 waveIntensityInput.value = "65";
+                if (pollutionIntensityInput) pollutionIntensityInput.value = "70";
                 setTool('draw'); // Reset to draw tool
                 toolBtns.forEach(b => {
                     b.classList.remove('active');
@@ -336,6 +362,12 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.globalAlpha = 1.0;
         }
 
+        if (pollutionState.heatmapCanvas) {
+            ctx.globalAlpha = pollutionIntensityInput ? (pollutionIntensityInput.value / 100) : 0.7;
+            ctx.drawImage(pollutionState.heatmapCanvas, 0, 0, canvas.width, canvas.height);
+            ctx.globalAlpha = 1.0;
+        }
+
         // Draw saved zones
         zones.forEach(zone => {
             const zType = zoneTypes[zone.type] || zoneTypes['default'];
@@ -343,7 +375,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let strokeColor = zType.border;
             let lineWidth = 2;
 
-            if (zone.id === selectedZoneId) {
+            if (zone.id === selectedZoneId || (selectedFolderId && zone.folderId === selectedFolderId)) {
                 lineWidth = 4;
             }
             if (mergeState.active && zone.id === mergeState.zone1Id) {
@@ -416,11 +448,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function showUpload() {
         currentImage = null;
         zones = [];
+        folders = [];
         currentPolygon = [];
         isDrawing = false;
         selectedZoneId = null;
+        selectedFolderId = null;
         zoneCounter = 1;
-        zoneCounter = 1;
+        folderCounter = 1;
         setTool('draw'); // Reset to default tool
         toolBtns.forEach(b => {
             b.classList.remove('active');
@@ -658,73 +692,243 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    if (btnAddFolder) {
+        btnAddFolder.addEventListener('click', () => {
+            folders.push({
+                id: Date.now(),
+                title: `Dossier ${folderCounter++}`,
+                isOpen: true
+            });
+            updateZoneListUI();
+        });
+    }
+
+    zoneListContainer.addEventListener('dragover', (e) => {
+        e.preventDefault(); // allow drop
+    });
+
+    zoneListContainer.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const folderTarget = e.target.closest('.folder-item');
+        if (!folderTarget) {
+            const draggedZoneId = parseInt(e.dataTransfer.getData('text/plain'));
+            if (!isNaN(draggedZoneId)) {
+                const zone = zones.find(z => z.id === draggedZoneId);
+                if (zone && zone.folderId !== null && zone.folderId !== undefined) {
+                    zone.folderId = null;
+                    updateZoneListUI();
+                    renderCanvas();
+                }
+            }
+        }
+    });
+
+    function createZoneDOM(zone) {
+        const el = document.createElement('div');
+        const isSelected = zone.id === selectedZoneId;
+        const isMergeTarget = mergeState.active && zone.id === mergeState.zone1Id;
+        el.className = `zone-item ${isSelected ? 'selected' : ''} ${isMergeTarget ? 'merge-target' : ''}`;
+
+        // Drag and drop setup for zones
+        el.draggable = true;
+        el.addEventListener('dragstart', (e) => {
+            e.dataTransfer.setData('text/plain', zone.id);
+            setTimeout(() => el.classList.add('dragging'), 0);
+        });
+        el.addEventListener('dragend', (e) => {
+            el.classList.remove('dragging');
+        });
+
+        el.onclick = (e) => {
+            if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
+                if (mergeState.active) {
+                    handleZoneSelectionForMerge(zone.id);
+                } else {
+                    selectedZoneId = zone.id;
+                    selectedFolderId = null;
+                    updateZoneListUI();
+                    renderCanvas();
+                }
+            }
+        };
+
+        const header = document.createElement('div');
+        header.className = 'zone-item-header';
+
+        const title = document.createElement('span');
+        title.textContent = zone.title;
+
+        const btnDel = document.createElement('button');
+        btnDel.className = 'btn-delete';
+        btnDel.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        btnDel.onclick = () => {
+            zones = zones.filter(z => z.id !== zone.id);
+            if (selectedZoneId === zone.id) selectedZoneId = null;
+            if (mergeState.zone1Id === zone.id) {
+                mergeState.active = false;
+                mergeState.zone1Id = null;
+                updateControlsUI();
+            }
+            updateZoneListUI();
+            updateSimulationAndRender();
+        };
+
+        header.appendChild(title);
+        header.appendChild(btnDel);
+
+        const select = document.createElement('select');
+        select.className = 'zone-select';
+        Object.keys(zoneTypes).forEach(key => {
+            const opt = document.createElement('option');
+            opt.value = key;
+            opt.textContent = zoneTypes[key].label;
+            if (zone.type === key) opt.selected = true;
+            select.appendChild(opt);
+        });
+
+        select.onchange = (e) => {
+            zone.type = e.target.value;
+            updateSimulationAndRender();
+        };
+
+        el.appendChild(header);
+        el.appendChild(select);
+        return el;
+    }
+
+    function createFolderDOM(folder) {
+        const wrap = document.createElement('div');
+        wrap.className = 'folder-wrapper';
+
+        const header = document.createElement('div');
+        header.className = `folder-item ${folder.id === selectedFolderId ? 'selected' : ''}`;
+
+        // drag and drop for folders to receive zones
+        header.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            header.classList.add('drag-over');
+        });
+        header.addEventListener('dragleave', (e) => {
+            header.classList.remove('drag-over');
+        });
+        header.addEventListener('drop', (e) => {
+            e.preventDefault();
+            header.classList.remove('drag-over');
+            const draggedZoneId = parseInt(e.dataTransfer.getData('text/plain'));
+            if (!isNaN(draggedZoneId)) {
+                const zone = zones.find(z => z.id === draggedZoneId);
+                if (zone) {
+                    zone.folderId = folder.id;
+                    updateZoneListUI();
+                    renderCanvas();
+                }
+            }
+        });
+
+        if (folder.isOpen === undefined) folder.isOpen = true;
+
+        header.onclick = (e) => {
+            if (e.target.closest('button') || e.target.tagName === 'INPUT') return;
+            if (selectedFolderId === folder.id) {
+                selectedFolderId = null;
+            } else {
+                selectedFolderId = folder.id;
+                selectedZoneId = null;
+            }
+            updateZoneListUI();
+            renderCanvas();
+        };
+
+        const leftGroup = document.createElement('div');
+        leftGroup.style.display = 'flex';
+        leftGroup.style.alignItems = 'center';
+        leftGroup.style.gap = '4px';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'btn-toggle-folder';
+        toggleBtn.style.background = 'none';
+        toggleBtn.style.border = 'none';
+        toggleBtn.style.color = 'inherit';
+        toggleBtn.style.cursor = 'pointer';
+        // Simple SVG Chevron
+        toggleBtn.innerHTML = folder.isOpen
+            ? `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`
+            : `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>`;
+
+        toggleBtn.onclick = (e) => {
+            e.stopPropagation();
+            folder.isOpen = !folder.isOpen;
+            updateZoneListUI();
+        };
+
+        const folderIcon = document.createElement('span');
+        folderIcon.textContent = "📁";
+        folderIcon.style.fontSize = "0.9rem";
+
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.className = 'folder-title-input';
+        titleInput.value = folder.title;
+        titleInput.onclick = (e) => e.stopPropagation();
+        titleInput.onblur = (e) => {
+            folder.title = e.target.value;
+        };
+        titleInput.onchange = (e) => {
+            folder.title = e.target.value;
+        };
+
+        leftGroup.appendChild(toggleBtn);
+        leftGroup.appendChild(folderIcon);
+        leftGroup.appendChild(titleInput);
+
+        const btnDel = document.createElement('button');
+        btnDel.className = 'btn-delete';
+        btnDel.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
+        btnDel.onclick = (e) => {
+            e.stopPropagation();
+            folders = folders.filter(f => f.id !== folder.id);
+            zones.forEach(z => { if (z.folderId === folder.id) z.folderId = null; });
+            if (selectedFolderId === folder.id) selectedFolderId = null;
+            updateZoneListUI();
+            renderCanvas();
+        };
+
+        header.appendChild(leftGroup);
+        header.appendChild(btnDel);
+        wrap.appendChild(header);
+
+        // Content area
+        const content = document.createElement('div');
+        content.className = 'folder-content';
+        if (!folder.isOpen) {
+            content.style.display = 'none';
+        }
+
+        const folderZones = zones.filter(z => z.folderId === folder.id);
+        folderZones.forEach(z => {
+            content.appendChild(createZoneDOM(z));
+        });
+
+        wrap.appendChild(content);
+        return wrap;
+    }
+
     function updateZoneListUI() {
         zoneListContainer.innerHTML = '';
-        if (zones.length === 0) {
+        if (zones.length === 0 && folders.length === 0) {
             zoneListContainer.innerHTML = '<p style="color: var(--clr-text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">Aucune zone définie.</p>';
             return;
         }
 
-        zones.forEach(zone => {
-            const el = document.createElement('div');
-            const isSelected = zone.id === selectedZoneId;
-            const isMergeTarget = mergeState.active && zone.id === mergeState.zone1Id;
-            el.className = `zone-item ${isSelected ? 'selected' : ''} ${isMergeTarget ? 'merge-target' : ''}`;
-            el.onclick = (e) => {
-                if (e.target.tagName !== 'SELECT' && e.target.tagName !== 'BUTTON' && !e.target.closest('button')) {
-                    if (mergeState.active) {
-                        handleZoneSelectionForMerge(zone.id);
-                    } else {
-                        selectedZoneId = zone.id;
-                        updateZoneListUI();
-                        renderCanvas();
-                    }
-                }
-            };
+        // Render Folders first
+        folders.forEach(folder => {
+            zoneListContainer.appendChild(createFolderDOM(folder));
+        });
 
-            const header = document.createElement('div');
-            header.className = 'zone-item-header';
-
-            const title = document.createElement('span');
-            title.textContent = zone.title;
-
-            const btnDel = document.createElement('button');
-            btnDel.className = 'btn-delete';
-            btnDel.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>`;
-            btnDel.onclick = () => {
-                zones = zones.filter(z => z.id !== zone.id);
-                if (selectedZoneId === zone.id) selectedZoneId = null;
-                if (mergeState.zone1Id === zone.id) {
-                    mergeState.active = false;
-                    mergeState.zone1Id = null;
-                    updateControlsUI();
-                }
-                updateZoneListUI();
-                updateSimulationAndRender();
-            };
-
-            header.appendChild(title);
-            header.appendChild(btnDel);
-
-            const select = document.createElement('select');
-            select.className = 'zone-select';
-            Object.keys(zoneTypes).forEach(key => {
-                const opt = document.createElement('option');
-                opt.value = key;
-                opt.textContent = zoneTypes[key].label;
-                if (zone.type === key) opt.selected = true;
-                select.appendChild(opt);
-            });
-
-            select.onchange = (e) => {
-                zone.type = e.target.value;
-                updateSimulationAndRender();
-            };
-
-            el.appendChild(header);
-            el.appendChild(select);
-
-            zoneListContainer.appendChild(el);
+        // Render root zones
+        const rootZones = zones.filter(z => !z.folderId);
+        rootZones.forEach(zone => {
+            zoneListContainer.appendChild(createZoneDOM(zone));
         });
     }
 
@@ -988,6 +1192,162 @@ document.addEventListener('DOMContentLoaded', () => {
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
 
         waveState.heatmapCanvas = heatCanvas;
+    }
+
+    function runPollutionSimulation() {
+        // Use a 6px grid for decent resolution and good performance
+        const cellSize = 6;
+        const cols = Math.ceil(canvas.width / cellSize);
+        const rows = Math.ceil(canvas.height / cellSize);
+
+        const grid = new Float32Array(cols * rows).fill(-1);
+        const obstacles = new Uint8Array(cols * rows);
+
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = cols;
+        offCanvas.height = rows;
+        const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
+
+        // Draw obstacles mask
+        offCtx.fillStyle = '#000000'; // Black = Obstacle globally
+        offCtx.fillRect(0, 0, cols, rows);
+        offCtx.scale(1 / cellSize, 1 / cellSize);
+
+        // 1. Les zones explicitement définies comme 'Eau' ou 'Polluante' sont navigables (espace de propagation)
+        zones.forEach(zone => {
+            if (zone.type === 'eau' || zone.type === 'polluante') {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#ffffff'; // White = Walkable
+                offCtx.fill();
+            }
+        });
+
+        // 2. Les autres zones bloquent l'eau
+        zones.forEach(zone => {
+            if (zone.type !== 'eau' && zone.type !== 'polluante') {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#000000'; // Black = Obstacle
+                offCtx.fill();
+            }
+        });
+
+        const maskData = offCtx.getImageData(0, 0, cols, rows).data;
+        for (let i = 0; i < cols * rows; i++) {
+            // Read RED channel
+            if (maskData[i * 4] < 128) {
+                obstacles[i] = 1;
+            }
+        }
+
+        // Draw source areas using polluante zones
+        offCtx.resetTransform();
+        offCtx.clearRect(0, 0, cols, rows);
+        offCtx.fillStyle = '#000000'; // black bg
+        offCtx.fillRect(0, 0, cols, rows);
+        offCtx.scale(1 / cellSize, 1 / cellSize);
+
+        zones.forEach(zone => {
+            if (zone.type === 'polluante') {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#ffffff'; // White = Source
+                offCtx.fill();
+            }
+        });
+
+        const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
+        const queue = [];
+
+        for (let i = 0; i < cols * rows; i++) {
+            if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
+                grid[i] = 0;
+                queue.push(i);
+            }
+        }
+
+        if (queue.length === 0) return;
+
+        let head = 0;
+        let maxDist = 0;
+
+        function check(nIdx, nd, nx, ny) {
+            if (nx >= 0 && nx < cols && ny >= 0 && ny < rows) {
+                if (obstacles[nIdx] === 0 && grid[nIdx] === -1) {
+                    grid[nIdx] = nd;
+                    if (nd > maxDist) maxDist = nd;
+                    queue.push(nIdx);
+                }
+            }
+        }
+
+        // BFS distance calculation
+        while (head < queue.length) {
+            const curr = queue[head++];
+            const d = grid[curr];
+            const cy = Math.floor(curr / cols);
+            const cx = curr % cols;
+
+            check(curr - cols, d + 1, cx, cy - 1);
+            check(curr + cols, d + 1, cx, cy + 1);
+            check(curr - 1, d + 1, cx - 1, cy);
+            check(curr + 1, d + 1, cx + 1, cy);
+        }
+
+        // Generate heatmap visual
+        const heatCanvas = document.createElement('canvas');
+        heatCanvas.width = canvas.width;
+        heatCanvas.height = canvas.height;
+        const hctx = heatCanvas.getContext('2d');
+
+        offCtx.resetTransform();
+        offCtx.clearRect(0, 0, cols, rows);
+        const heatImgData = offCtx.createImageData(cols, rows);
+
+        for (let i = 0; i < cols * rows; i++) {
+            const d = grid[i];
+            if (d >= 0 && obstacles[i] === 0) {
+                let ratio = d / Math.max(1, maxDist);
+                // Curve slightly to emphasize source areas
+                ratio = Math.pow(ratio, 0.8);
+                // Toxic pollution colors: Source is yellow/orange (30-60 hue), spreading to green (120-150 hue)
+                const hue = 60 + (ratio * 80); // 60 (Yellow) to 140 (Green)
+                const rgb = hslToRgb(hue / 360, 0.9, 0.6);
+
+                heatImgData.data[i * 4] = rgb[0];
+                heatImgData.data[i * 4 + 1] = rgb[1];
+                heatImgData.data[i * 4 + 2] = rgb[2];
+                // Max opacity handled by globalAlpha via slider now
+                heatImgData.data[i * 4 + 3] = 255;
+            }
+        }
+
+        offCtx.putImageData(heatImgData, 0, 0);
+
+        hctx.imageSmoothingEnabled = true;
+        hctx.filter = 'blur(15px)';
+        hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+
+        pollutionState.heatmapCanvas = heatCanvas;
     }
 
     function hslToRgb(h, s, l) {

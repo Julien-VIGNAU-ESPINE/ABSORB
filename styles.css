@@ -232,6 +232,87 @@ input[type="range"] {
     font-weight: 500;
 }
 
+.zone-item.dragging {
+    opacity: 0.5;
+}
+
+.folder-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.folder-item {
+    background: var(--clr-surface-hover);
+    border: 1px dashed var(--clr-border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.folder-item:hover {
+    background: var(--clr-primary-light);
+}
+
+.folder-item.selected {
+    border-style: solid;
+    border-color: var(--clr-primary);
+    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+.folder-item.drag-over {
+    background: var(--clr-primary-light);
+    border-style: solid;
+    border-color: var(--clr-primary);
+}
+
+.folder-content {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-left: 12px;
+    padding-left: 12px;
+    border-left: 2px solid var(--clr-border);
+}
+
+.folder-title-input {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    font-family: inherit;
+    width: 100px;
+    padding: 2px 4px;
+    outline: none;
+    transition: all var(--transition-fast);
+}
+
+.folder-title-input:hover,
+.folder-title-input:focus {
+    border-color: var(--clr-border);
+    background: var(--clr-surface);
+}
+
+.btn-toggle-folder {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    transition: background var(--transition-fast);
+}
+
+.btn-toggle-folder:hover {
+    background: rgba(128, 128, 128, 0.1);
+}
+
 .btn-delete {
     background: none;
     border: none;
