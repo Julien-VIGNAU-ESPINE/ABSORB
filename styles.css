@@ -568,3 +568,247 @@ canvas {
     height: 24px;
     background-color: var(--clr-border);
 }
+
+/* ---- Page Navigation ---- */
+.page-nav {
+    display: flex;
+    gap: 8px;
+    background: var(--clr-primary-light);
+    border-radius: 12px;
+    padding: 4px;
+}
+
+.page-nav-btn {
+    background: transparent;
+    border: none;
+    color: var(--clr-text-muted);
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.page-nav-btn.active {
+    background: var(--clr-primary);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 102, 204, 0.3);
+}
+
+.page-nav-btn:hover:not(.active) {
+    background: rgba(0, 102, 204, 0.1);
+    color: var(--clr-primary);
+}
+
+/* ---- Estimation Page ---- */
+.estimation-page {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.estimation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 20px 28px;
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
+    border-radius: 16px;
+    backdrop-filter: var(--glass-blur);
+    flex-shrink: 0;
+}
+
+.estimation-header h2 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--clr-primary);
+    margin-bottom: 4px;
+}
+
+.estimation-header p {
+    font-size: 0.85rem;
+    color: var(--clr-text-muted);
+    margin: 0;
+}
+
+.estimation-body {
+    display: grid;
+    grid-template-columns: 280px 1fr 280px;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+}
+
+/* Cards */
+.est-card {
+    background: var(--clr-surface);
+    border: 1px solid var(--clr-border);
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    backdrop-filter: var(--glass-blur);
+}
+
+.est-card-results {
+    border-color: rgba(0, 102, 204, 0.25);
+}
+
+.est-card-title {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--clr-primary);
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--clr-border);
+    flex-shrink: 0;
+}
+
+/* Parameters */
+.est-param-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.est-label {
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--clr-text-main);
+}
+
+.est-unit {
+    color: var(--clr-text-muted);
+    font-weight: 400;
+}
+
+.est-param-group small {
+    font-size: 0.75rem;
+    color: var(--clr-text-muted);
+    line-height: 1.4;
+}
+
+.est-input {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--clr-border);
+    background: var(--clr-background);
+    color: var(--clr-text-main);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    transition: border-color var(--transition-fast);
+    width: 100%;
+}
+
+.est-input:focus {
+    border-color: var(--clr-primary);
+}
+
+.est-info-box {
+    background: var(--clr-primary-light);
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 0.78rem;
+    color: var(--clr-text-muted);
+    line-height: 1.6;
+    margin-top: auto;
+}
+
+/* Placeholder */
+.est-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 10px;
+    color: var(--clr-text-muted);
+    font-size: 0.88rem;
+    text-align: center;
+    padding: 24px 12px;
+    min-height: 120px;
+}
+
+.est-placeholder-icon {
+    font-size: 2.2rem;
+    opacity: 0.6;
+}
+
+/* Metrics */
+.est-metric {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--clr-background);
+    gap: 8px;
+}
+
+.est-metric-highlight {
+    background: var(--clr-primary-light);
+    border: 1px solid rgba(0, 102, 204, 0.25);
+    margin: 4px 0;
+}
+
+.est-metric-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.est-metric-icon {
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.est-metric-label {
+    font-size: 0.82rem;
+    color: var(--clr-text-muted);
+}
+
+.est-metric-value {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--clr-text-main);
+    text-align: right;
+    white-space: nowrap;
+}
+
+.est-metric-big {
+    font-size: 1.6rem;
+    color: var(--clr-primary);
+}
+
+/* Breakdown */
+.est-breakdown-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 12px;
+    background: var(--clr-background);
+    border-radius: 10px;
+    border: 1px solid var(--clr-border);
+    margin-bottom: 6px;
+}
+
+.est-breakdown-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--clr-text-main);
+}
+
+.est-breakdown-detail {
+    font-size: 0.78rem;
+    color: var(--clr-text-muted);
+    line-height: 1.5;
+}

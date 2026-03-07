@@ -75,6 +75,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let simulationTime = 0.0;
     let simulationInterval = null;
 
+    // Scale / Ruler State
+    let rulerState = { active: false, p1: null, p2: null, pixelsPerMeter: null };
+    const scaleSection = document.getElementById('scale-section');
+    const scaleMetersInput = document.getElementById('scale-meters');
+    const scaleResult = document.getElementById('scale-result');
+    const estScaleStatus = document.getElementById('est-scale-status');
+
+    function updateScaleResult() {
+        if (rulerState.p1 && rulerState.p2 && scaleMetersInput.value > 0) {
+            const dx = rulerState.p2.x - rulerState.p1.x;
+            const dy = rulerState.p2.y - rulerState.p1.y;
+            const pixelDist = Math.hypot(dx, dy);
+            const meters = parseFloat(scaleMetersInput.value);
+            rulerState.pixelsPerMeter = pixelDist / meters;
+            scaleResult.textContent = `✅ Échelle: 1m = ${rulerState.pixelsPerMeter.toFixed(2)} px`;
+            if (estScaleStatus) estScaleStatus.textContent = `✅ Échelle calibrée : 1m = ${rulerState.pixelsPerMeter.toFixed(2)} pixels`;
+        }
+    }
+
+    if (scaleMetersInput) scaleMetersInput.addEventListener('input', updateScaleResult);
+
     // Zoom State
     let currentZoom = 1;
     const canvasWrapper = document.querySelector('.canvas-wrapper');
@@ -101,6 +122,19 @@ document.addEventListener('DOMContentLoaded', () => {
         waveState.active = (tool === 'wave');
         waveState.isDrawingSource = false;
 
+        // Ruler tool: show scale section in sidebar
+        if (scaleSection) {
+            if (tool === 'ruler') {
+                scaleSection.classList.remove('hidden');
+                rulerState.active = true;
+                rulerState.p1 = null;
+                rulerState.p2 = null;
+            } else {
+                scaleSection.classList.add('hidden');
+                rulerState.active = false;
+            }
+        }
+
         updateControlsUI();
         updateZoneListUI();
         updateBoatListUI();
@@ -123,6 +157,28 @@ document.addEventListener('DOMContentLoaded', () => {
         boatsSection.classList.remove('hidden');
         zonesSection.classList.add('hidden');
     });
+
+    // --- Page Navigation (Simulation / Estimation) ---
+    const navSimulation = document.getElementById('nav-simulation');
+    const navEstimation = document.getElementById('nav-estimation');
+    const estimationPage = document.getElementById('estimation-page');
+    const workspaceWrapper = document.querySelector('.workspace-wrapper');
+
+    if (navSimulation && navEstimation) {
+        navSimulation.addEventListener('click', () => {
+            navSimulation.classList.add('active');
+            navEstimation.classList.remove('active');
+            workspaceWrapper.classList.remove('hidden');
+            if (estimationPage) estimationPage.classList.add('hidden');
+        });
+
+        navEstimation.addEventListener('click', () => {
+            navEstimation.classList.add('active');
+            navSimulation.classList.remove('active');
+            workspaceWrapper.classList.add('hidden');
+            if (estimationPage) estimationPage.classList.remove('hidden');
+        });
+    }
 
     // --- Drag and Drop Handling ---
 
@@ -537,7 +593,47 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.fill();
             });
         }
+
+        // Draw ruler line if tool is active
+        if (rulerState.active && rulerState.p1) {
+            ctx.save();
+            ctx.strokeStyle = '#f1c40f';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(rulerState.p1.x, rulerState.p1.y);
+            if (rulerState.p2) ctx.lineTo(rulerState.p2.x, rulerState.p2.y);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            [rulerState.p1, rulerState.p2].forEach(p => {
+                if (!p) return;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+                ctx.fillStyle = '#f1c40f';
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            });
+
+            if (rulerState.p2) {
+                const mx = (rulerState.p1.x + rulerState.p2.x) / 2;
+                const my = (rulerState.p1.y + rulerState.p2.y) / 2 - 14;
+                const label = scaleMetersInput ? `${scaleMetersInput.value}m` : '';
+                ctx.font = 'bold 14px Inter, sans-serif';
+                ctx.fillStyle = '#f1c40f';
+                ctx.textAlign = 'center';
+                ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+                ctx.lineWidth = 3;
+                ctx.strokeText(label, mx, my);
+                ctx.fillText(label, mx, my);
+                ctx.textAlign = 'left';
+            }
+            ctx.restore();
+        }
     }
+
 
     function drawPolygon(points, fillColor, strokeColor, closePath = true, lineWidth = 2) {
         if (points.length === 0) return;
@@ -700,6 +796,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const x = (e.clientX - rect.left) * scaleX;
         const y = (e.clientY - rect.top) * scaleY;
+
+        if (currentTool === 'ruler') {
+            if (!rulerState.p1) {
+                rulerState.p1 = { x, y };
+                rulerState.p2 = null;
+            } else {
+                rulerState.p2 = { x, y };
+                updateScaleResult();
+            }
+            renderCanvas();
+            return;
+        }
 
         if (currentTool === 'wave') {
             waveState.isDrawingSource = true;
@@ -1040,11 +1148,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
         select.onchange = (e) => {
             zone.type = e.target.value;
+            updateZoneListUI(); // re-render to show/hide intensity slider
             updateSimulationAndRender();
         };
 
         el.appendChild(header);
         el.appendChild(select);
+
+        // Show pollution intensity slider + L/h for 'polluante' zones
+        if (zone.type === 'polluante') {
+            if (zone.pollutionIntensity === undefined) zone.pollutionIntensity = 0.1;
+            if (zone.litersPerHour === undefined) zone.litersPerHour = 50;
+
+            const intensityWrapper = document.createElement('div');
+            intensityWrapper.style.marginTop = '8px';
+            intensityWrapper.style.display = 'flex';
+            intensityWrapper.style.flexDirection = 'column';
+            intensityWrapper.style.gap = '6px';
+
+            // --- Intensity slider ---
+            const intensityLabel = document.createElement('label');
+            intensityLabel.style.fontSize = '0.8rem';
+            intensityLabel.style.color = 'var(--clr-text-muted)';
+            intensityLabel.style.display = 'flex';
+            intensityLabel.style.justifyContent = 'space-between';
+
+            const labelText = document.createElement('span');
+            labelText.textContent = 'Intensité visuelle';
+
+            const valueDisplay = document.createElement('span');
+            valueDisplay.style.fontWeight = '600';
+            valueDisplay.style.color = '#e67e22';
+            valueDisplay.textContent = `${Math.round(zone.pollutionIntensity * 100)}%`;
+
+            intensityLabel.appendChild(labelText);
+            intensityLabel.appendChild(valueDisplay);
+
+            const intensitySlider = document.createElement('input');
+            intensitySlider.type = 'range';
+            intensitySlider.min = '1';
+            intensitySlider.max = '200';
+            intensitySlider.value = Math.round(zone.pollutionIntensity * 100);
+            intensitySlider.style.accentColor = '#e67e22';
+
+            intensitySlider.oninput = (e) => {
+                zone.pollutionIntensity = parseInt(e.target.value) / 100;
+                valueDisplay.textContent = `${e.target.value}%`;
+            };
+
+            // --- Litres/heure input ---
+            const lphWrapper = document.createElement('div');
+            lphWrapper.style.display = 'flex';
+            lphWrapper.style.alignItems = 'center';
+            lphWrapper.style.gap = '6px';
+            lphWrapper.style.marginTop = '4px';
+
+            const lphLabel = document.createElement('label');
+            lphLabel.style.fontSize = '0.8rem';
+            lphLabel.style.color = 'var(--clr-text-muted)';
+            lphLabel.style.flex = '1';
+            lphLabel.textContent = 'Déversement (L/h)';
+
+            const lphInput = document.createElement('input');
+            lphInput.type = 'number';
+            lphInput.min = '0';
+            lphInput.step = '1';
+            lphInput.value = zone.litersPerHour;
+            lphInput.style.width = '70px';
+            lphInput.style.padding = '4px 6px';
+            lphInput.style.borderRadius = '6px';
+            lphInput.style.border = '1px solid var(--clr-border)';
+            lphInput.style.background = 'var(--clr-background)';
+            lphInput.style.color = 'inherit';
+            lphInput.style.fontFamily = 'inherit';
+            lphInput.style.fontSize = '0.85rem';
+            lphInput.onclick = (e) => e.stopPropagation();
+            lphInput.oninput = (e) => {
+                zone.litersPerHour = parseFloat(e.target.value) || 0;
+            };
+
+            lphWrapper.appendChild(lphLabel);
+            lphWrapper.appendChild(lphInput);
+
+            intensityWrapper.appendChild(intensityLabel);
+            intensityWrapper.appendChild(intensitySlider);
+            intensityWrapper.appendChild(lphWrapper);
+            el.appendChild(intensityWrapper);
+        }
+
+
         return el;
     }
 
@@ -1899,36 +2091,35 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Generate source areas
-        offCtx.resetTransform();
-        offCtx.clearRect(0, 0, cols, rows);
-        offCtx.fillStyle = '#000000';
-        offCtx.fillRect(0, 0, cols, rows);
-        offCtx.scale(1 / cellSize, 1 / cellSize);
-
+        // Generate source areas per-zone so each zone can have its own intensity
         zones.forEach(zone => {
-            if (zone.type === 'polluante') {
-                offCtx.beginPath();
-                if (zone.points.length > 0) {
-                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) {
-                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
-                    }
+            if (zone.type !== 'polluante') return;
+            const zoneIntensity = zone.pollutionIntensity !== undefined ? zone.pollutionIntensity : 0.1;
+
+            offCtx.resetTransform();
+            offCtx.clearRect(0, 0, cols, rows);
+            offCtx.fillStyle = '#000000';
+            offCtx.fillRect(0, 0, cols, rows);
+            offCtx.scale(1 / cellSize, 1 / cellSize);
+
+            offCtx.beginPath();
+            if (zone.points.length > 0) {
+                offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                for (let i = 1; i < zone.points.length; i++) {
+                    offCtx.lineTo(zone.points[i].x, zone.points[i].y);
                 }
-                offCtx.closePath();
-                offCtx.fillStyle = '#ffffff';
-                offCtx.fill();
+            }
+            offCtx.closePath();
+            offCtx.fillStyle = '#ffffff';
+            offCtx.fill();
+
+            const zoneSourceData = offCtx.getImageData(0, 0, cols, rows).data;
+            for (let i = 0; i < numCells; i++) {
+                if (zoneSourceData[i * 4] > 128 && obstacles[i] === 0) {
+                    density[i] = Math.min(1.0, density[i] + zoneIntensity);
+                }
             }
         });
-
-        const sourceData = offCtx.getImageData(0, 0, cols, rows).data;
-
-        // Feed pollution source continuously
-        for (let i = 0; i < numCells; i++) {
-            if (sourceData[i * 4] > 128 && obstacles[i] === 0) {
-                density[i] = Math.min(1.0, density[i] + 0.1);
-            }
-        }
 
         const wGrid = waveState.grid;
         const wMax = waveState.maxAllowedDist || 1;
@@ -2194,7 +2385,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (t < 1 / 2) return q;
                 if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
                 return p;
-            }
+            };
             const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
             const p = 2 * l - q;
             r = hue2rgb(p, q, h + 1 / 3);
@@ -2202,6 +2393,113 @@ document.addEventListener('DOMContentLoaded', () => {
             b = hue2rgb(p, q, h - 1 / 3);
         }
         return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }
+
+    // --- Estimation Page Logic ---
+    const btnRunEstimation = document.getElementById('btn-run-estimation');
+    if (btnRunEstimation) {
+        btnRunEstimation.addEventListener('click', () => {
+            const ppm = rulerState.pixelsPerMeter;
+            if (!ppm) {
+                alert("⚠️ Pas d'échelle définie ! Allez dans Simulation, sélectionnez l'outil Règle et tracez une ligne sur la carte.");
+                return;
+            }
+            if (!pollutionState.density || !pollutionState.cols) {
+                alert("⚠️ Pas de simulation de pollution disponible ! Lancez d'abord la simulation.");
+                return;
+            }
+
+            const cellSize = 6; // px per pollution cell
+            const metersPerPx = 1 / ppm;
+            const metersPerCell = cellSize * metersPerPx;
+            const m2PerCell = metersPerCell * metersPerCell;
+
+            const duration = parseFloat(document.getElementById('est-duration').value) || 24;
+            const cellCapacityL = parseFloat(document.getElementById('est-cell-capacity').value) || 10;
+
+            const density = pollutionState.density;
+            const numCells = pollutionState.cols * pollutionState.rows;
+
+            // Count polluted area from simulation
+            let pollutedCellCount = 0;
+            for (let i = 0; i < numCells; i++) {
+                if (density[i] > 0.01) pollutedCellCount++;
+            }
+            const pollutedAreaM2 = pollutedCellCount * m2PerCell;
+
+            // Coast length from impactMask
+            let coastCells = 0;
+            if (pollutionState.impactMask) {
+                for (let i = 0; i < pollutionState.impactMask.length; i++) {
+                    if (pollutionState.impactMask[i] === 1) coastCells++;
+                }
+            }
+            const coastLengthM = coastCells * metersPerCell;
+
+            // Volume from zones L/h × duration
+            const polluantZones = zones.filter(z => z.type === 'polluante');
+            let totalVolumeLFromZones = 0;
+            polluantZones.forEach(z => {
+                totalVolumeLFromZones += (z.litersPerHour || 0) * duration;
+            });
+
+            // Fallback if no L/h defined: use thickness approach
+            const thicknessMm = parseFloat(document.getElementById('est-thickness').value) || 5;
+            const thicknessM = thicknessMm / 1000;
+            const volumeLFromThickness = pollutedAreaM2 * thicknessM * 1000;
+
+            const volumeL = totalVolumeLFromZones > 0 ? totalVolumeLFromZones : volumeLFromThickness;
+
+            const numFilterCells = Math.ceil(volumeL / cellCapacityL);
+            const barrierLengthM = numFilterCells; // 1 cell = 1m wide
+
+            // Display results
+            const placeholder = document.getElementById('est-placeholder');
+            if (placeholder) placeholder.classList.add('hidden');
+            document.getElementById('est-results-data').classList.remove('hidden');
+
+            document.getElementById('est-coast-length').textContent = coastLengthM > 0
+                ? `${coastLengthM.toFixed(0)} m`
+                : '— (activez "Alerte Côtes Rouges")';
+            document.getElementById('est-polluted-area').textContent = `${pollutedAreaM2.toFixed(0)} m²`;
+            document.getElementById('est-volume').textContent = `${volumeL.toFixed(0)} L`;
+            document.getElementById('est-cells').textContent = numFilterCells.toLocaleString('fr-FR');
+            document.getElementById('est-barrier-length').textContent = `${barrierLengthM} m`;
+
+            // Per-zone breakdown
+            const breakdown = document.getElementById('est-breakdown');
+            breakdown.innerHTML = '';
+            if (polluantZones.length === 0) {
+                breakdown.innerHTML = '<div class="est-placeholder"><div class="est-placeholder-icon">📋</div><p>Aucune zone polluante définie</p></div>';
+            } else {
+                polluantZones.forEach(zone => {
+                    const lph = zone.litersPerHour || 0;
+                    const zoneVol = lph * duration;
+                    const zoneCells = Math.ceil(zoneVol / cellCapacityL);
+                    const row = document.createElement('div');
+                    row.className = 'est-breakdown-row';
+                    row.innerHTML = `
+                        <span class="est-breakdown-name">🟣 ${zone.title}</span>
+                        <span class="est-breakdown-detail">
+                            ${lph} L/h × ${duration}h = <strong>${zoneVol.toFixed(0)} L</strong><br>
+                            → <strong>${zoneCells} cellule${zoneCells > 1 ? 's' : ''} filtrante${zoneCells > 1 ? 's' : ''}</strong>
+                        </span>
+                    `;
+                    breakdown.appendChild(row);
+                });
+
+                // Total row
+                const totalRow = document.createElement('div');
+                totalRow.className = 'est-breakdown-row';
+                totalRow.style.borderColor = 'var(--clr-primary)';
+                totalRow.style.background = 'var(--clr-primary-light)';
+                totalRow.innerHTML = `
+                    <span class="est-breakdown-name" style="color:var(--clr-primary)">🔲 TOTAL</span>
+                    <span class="est-breakdown-detail" style="font-weight:600; color:var(--clr-text-main)">${numFilterCells} cellules filtrantes • ${barrierLengthM} m de barrière</span>
+                `;
+                breakdown.appendChild(totalRow);
+            }
+        });
     }
 
 });

@@ -17,8 +17,16 @@
     <div class="app-container">
         <!-- Header Section -->
         <header class="glass-header">
-            <h1>Calculateur de Cellules Filtrantes</h1>
-            <p>Importez une image de port pour commencer la planification</p>
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                    <h1>Calculateur de Cellules Filtrantes</h1>
+                    <p>Importez une image de port pour commencer la planification</p>
+                </div>
+                <nav class="page-nav">
+                    <button id="nav-simulation" class="page-nav-btn active">🗺️ Simulation</button>
+                    <button id="nav-estimation" class="page-nav-btn">📊 Estimation</button>
+                </nav>
+            </div>
         </header>
 
         <!-- Layout Wrapper -->
@@ -58,6 +66,23 @@
                         <input type="checkbox" id="cb-persist-impact">
                     </div>
                 </div>
+                <!-- Scale ruler section -->
+                <div id="scale-section" class="hidden">
+                    <div class="sidebar-divider"></div>
+                    <div style="margin-top: 4px;">
+                        <h2 style="margin-bottom:8px;">📏 Échelle</h2>
+                        <p id="scale-status" style="font-size:0.8rem; color:var(--clr-text-muted); margin-bottom:8px;">
+                            Tracez une ligne sur la carte, puis entrez sa longueur réelle.</p>
+                        <div class="slider-group" style="flex-direction:row; align-items:center; gap:8px;">
+                            <input type="number" id="scale-meters" min="1" value="100"
+                                style="width:80px; padding:6px 8px; border-radius:6px; border:1px solid var(--clr-border); background:var(--clr-surface); color:inherit; font-family:inherit;">
+                            <label style="font-size:0.85rem;">mètres</label>
+                        </div>
+                        <p id="scale-result" style="font-size:0.8rem; color:#27ae60; margin-top:6px; font-weight:600;">
+                        </p>
+                    </div>
+                </div>
+
                 <div class="sidebar-divider"></div>
                 <div class="save-load-group" style="display: flex; gap: 8px; margin-top: 8px;">
                     <button id="btn-save-project" class="btn-secondary btn-small" style="flex: 1;"
@@ -167,6 +192,16 @@
                             </path>
                         </svg>
                     </button>
+                    <button class="tool-btn" data-tool="ruler" title="Règle d'échelle (tracer pour définir l'échelle)">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 12h20" />
+                            <path d="M6 8v8" />
+                            <path d="M10 10v4" />
+                            <path d="M14 10v4" />
+                            <path d="M18 8v8" />
+                        </svg>
+                    </button>
                     <button class="tool-btn" data-tool="erase" title="Effacer une zone au clic">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -245,13 +280,118 @@
                 </div>
             </aside>
         </div>
-    </div>
-    </div>
 
-    <!-- JavaScript logic -->
-    <script src="polybool.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="script.js"></script>
+        <!-- Estimation Page (inside app-container, hidden by default) -->
+        <div id="estimation-page" class="estimation-page hidden">
+
+            <div class="estimation-header">
+                <div>
+                    <h2>📊 Estimation des cellules filtrantes</h2>
+                    <p id="est-scale-status">Aucune échelle définie — allez dans Simulation &rarr; Outil Règle pour
+                        calibrer.</p>
+                </div>
+                <button id="btn-run-estimation" class="btn-primary">
+                    ⚡ Lancer l'estimation
+                </button>
+            </div>
+
+            <div class="estimation-body">
+
+                <!-- Left: Parameters -->
+                <div class="est-card">
+                    <div class="est-card-title">⚙️ Paramètres physiques</div>
+
+                    <div class="est-param-group">
+                        <label class="est-label">Épaisseur de nappe <span class="est-unit">(mm)</span></label>
+                        <input type="number" id="est-thickness" value="5" min="0.1" step="0.1" class="est-input">
+                        <small>Épaisseur typique : 1–10mm pour hydrocarbures légers</small>
+                    </div>
+
+                    <div class="est-param-group">
+                        <label class="est-label">Capacité par cellule filtrante <span
+                                class="est-unit">(L)</span></label>
+                        <input type="number" id="est-cell-capacity" value="10" min="1" class="est-input">
+                        <small>1 cellule = 1m de large</small>
+                    </div>
+
+                    <div class="est-param-group">
+                        <label class="est-label">Durée projetée <span class="est-unit">(heures)</span></label>
+                        <input type="number" id="est-duration" value="24" min="1" class="est-input">
+                    </div>
+
+                    <div class="est-info-box">
+                        <strong>ℹ️ Méthodologie</strong><br>
+                        Volume = Surface × Épaisseur × Densité moy.<br>
+                        Cellules = Volume total ÷ Capacité / cellule
+                    </div>
+                </div>
+
+                <!-- Center: Results -->
+                <div class="est-card est-card-results">
+                    <div class="est-card-title">📐 Résultats</div>
+
+                    <div id="est-placeholder" class="est-placeholder">
+                        <div class="est-placeholder-icon">🔲</div>
+                        <p>Cliquez sur <strong>Lancer l'estimation</strong><br>pour afficher les résultats</p>
+                    </div>
+
+                    <div id="est-results-data" class="hidden">
+                        <div class="est-metric">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">📏</div>
+                                <div class="est-metric-label">Côtes impactées</div>
+                            </div>
+                            <div id="est-coast-length" class="est-metric-value">—</div>
+                        </div>
+                        <div class="est-metric">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🌊</div>
+                                <div class="est-metric-label">Surface polluée</div>
+                            </div>
+                            <div id="est-polluted-area" class="est-metric-value">—</div>
+                        </div>
+                        <div class="est-metric">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🛢️</div>
+                                <div class="est-metric-label">Volume hydrocarbures</div>
+                            </div>
+                            <div id="est-volume" class="est-metric-value">—</div>
+                        </div>
+                        <div class="est-metric est-metric-highlight">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">🔲</div>
+                                <div class="est-metric-label">Cellules filtrantes nécessaires</div>
+                            </div>
+                            <div id="est-cells" class="est-metric-value est-metric-big">—</div>
+                        </div>
+                        <div class="est-metric">
+                            <div class="est-metric-left">
+                                <div class="est-metric-icon">📐</div>
+                                <div class="est-metric-label">Longueur de barrière</div>
+                            </div>
+                            <div id="est-barrier-length" class="est-metric-value">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Breakdown by zone -->
+                <div class="est-card">
+                    <div class="est-card-title">🗂️ Détail par zone polluante</div>
+                    <div id="est-breakdown">
+                        <div class="est-placeholder">
+                            <div class="est-placeholder-icon">📋</div>
+                            <p>Aucune donnée disponible</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- JavaScript logic -->
+        <script src="polybool.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <script src="script.js"></script>
 </body>
 
 </html>
