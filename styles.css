@@ -22,6 +22,23 @@
     /* Transitions */
     --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-medium: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+
+    /* Background pattern variables */
+    --bg-checker-1: #e5e9ea;
+    --bg-checker-2: var(--clr-background);
+}
+
+[data-theme="dark"] {
+    --clr-background: #12151c;
+    --clr-surface: rgba(24, 30, 40, 0.75);
+    --clr-surface-hover: rgba(32, 40, 50, 0.9);
+    --clr-primary: #4da6ff;
+    --clr-primary-light: rgba(77, 166, 255, 0.15);
+    --clr-text-main: #e2e8f0;
+    --clr-text-muted: #94a3b8;
+    --clr-border: rgba(77, 166, 255, 0.2);
+    --bg-checker-1: #1a202c;
+    --bg-checker-2: #2d3748;
 }
 
 * {
@@ -145,6 +162,35 @@ input[type="range"] {
     margin: 4px 0;
 }
 
+/* Right Tools Sidebar */
+.tools-sidebar {
+    width: 72px;
+    background: var(--clr-surface);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--clr-border);
+    border-radius: 20px;
+    padding: 24px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: var(--shadow-soft);
+    gap: 16px;
+    transition: all var(--transition-medium);
+}
+
+.tools-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+}
+
+.tools-sidebar .sidebar-divider {
+    width: 32px;
+    margin: 0;
+}
+
 .zone-list {
     display: flex;
     flex-direction: column;
@@ -154,7 +200,7 @@ input[type="range"] {
 }
 
 .zone-item {
-    background: rgba(255, 255, 255, 0.8);
+    background: var(--clr-surface);
     border: 1px solid var(--clr-border);
     border-radius: 12px;
     padding: 16px;
@@ -164,18 +210,18 @@ input[type="range"] {
 
 .zone-item:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    background: var(--clr-surface-hover);
 }
 
 .zone-item.selected {
     border-color: var(--clr-primary);
     box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
-    background: white;
+    background: var(--clr-background);
 }
 
 .zone-item.merge-target {
     border-color: #f39c12;
     box-shadow: 0 0 0 2px rgba(243, 156, 18, 0.2);
-    background: #fffdf5;
 }
 
 .zone-item-header {
@@ -207,10 +253,11 @@ input[type="range"] {
     padding: 8px;
     border-radius: 6px;
     border: 1px solid var(--clr-border);
+    background: var(--clr-background);
+    color: var(--clr-text-main);
     font-family: inherit;
     font-size: 0.9rem;
     outline: none;
-    background: white;
 }
 
 .zone-select:focus {
@@ -338,8 +385,8 @@ input[type="range"] {
     inset: 0;
     display: flex;
     flex-direction: column;
-    background: repeating-conic-gradient(var(--clr-background) 0 25%, transparent 0 50%) 50% / 20px 20px;
-    background-color: #e5e9ea;
+    background: repeating-conic-gradient(var(--bg-checker-2) 0 25%, transparent 0 50%) 50% / 20px 20px;
+    background-color: var(--bg-checker-1);
     overflow: hidden;
     opacity: 1;
     transition: opacity var(--transition-medium);
@@ -347,13 +394,12 @@ input[type="range"] {
 
 .canvas-wrapper {
     flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     overflow: auto;
     padding: 24px;
-    min-height: 0;
-    /* Important for flex child to allow scrolling */
+    position: relative;
+    /* Use grid to center if it aligns nicely, else fallback to block */
+    display: grid;
+    place-items: center;
 }
 
 .canvas-container.hidden {
@@ -367,28 +413,11 @@ input[type="range"] {
 }
 
 canvas {
-    max-width: 100%;
-    max-height: 100%;
+    max-width: none;
+    max-height: none;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     cursor: crosshair;
-}
-
-.toolbar {
-    position: relative;
-    align-self: center;
-    margin-top: 16px;
-    margin-bottom: 0px;
-    background: var(--clr-surface);
-    backdrop-filter: var(--glass-blur);
-    -webkit-backdrop-filter: var(--glass-blur);
-    border: 1px solid var(--clr-border);
-    border-radius: 16px;
-    padding: 8px 16px;
-    display: flex;
-    flex-direction: row;
-    gap: 12px;
-    box-shadow: var(--shadow-hover);
-    z-index: 10;
+    transform-origin: 0 0;
 }
 
 .tool-btn {

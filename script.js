@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearWaves = document.getElementById('btn-clear-waves');
     const toolBtns = document.querySelectorAll('.tool-btn');
     const sidebarPanel = document.getElementById('sidebar-panel');
+    const toolsPanel = document.getElementById('tools-panel');
     const zoneListContainer = document.getElementById('zone-list-container');
 
     // Save & Load
@@ -44,6 +45,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
+
+    // Zoom State
+    let currentZoom = 1;
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
 
     // --- Toolbar Setup ---
     toolBtns.forEach(btn => {
@@ -115,13 +120,62 @@ document.addEventListener('DOMContentLoaded', () => {
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
 
+    function initProjectData(data) {
+        if (data.imageSrc) {
+            const img = new Image();
+            img.onload = () => {
+                currentImage = img;
+                zones = data.zones || [];
+                zoneCounter = data.zoneCounter || 1;
+                waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
+
+                if (data.adjustments) {
+                    brightnessInput.value = data.adjustments.brightness || "100";
+                    waveIntensityInput.value = data.adjustments.waveIntensity || "65";
+                }
+
+                isDrawing = false;
+                currentPolygon = [];
+                selectedZoneId = null;
+                mergeState.active = false;
+                mergeState.zone1Id = null;
+
+                setTool('draw');
+                toolBtns.forEach(b => {
+                    b.classList.remove('active');
+                    if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
+                });
+
+                fitCanvasToScreen();
+                updateSimulationAndRender();
+                showCanvas();
+                updateControlsUI();
+                loadFileInput.value = '';
+            };
+            img.src = data.imageSrc;
+        }
+    }
+
     // Save & Load Event Listeners
     if (btnSaveProject) {
         btnSaveProject.addEventListener('click', () => {
             if (!currentImage) return alert("Rien à sauvegarder.");
 
+            const zip = new JSZip();
+
+            // Extract base64 data from currentImage.src
+            const imageSrc = currentImage.src;
+            const base64Data = imageSrc.split(',')[1];
+            // Get mime type
+            const mimeTypeMatch = imageSrc.match(/data:(.*?);/);
+            const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/png';
+            const ext = mimeType === 'image/jpeg' ? 'jpg' : 'png';
+            const imageFilename = `image.${ext}`;
+
+            zip.file(imageFilename, base64Data, { base64: true });
+
             const data = {
-                imageSrc: currentImage.src,
+                imageFilename: imageFilename,
                 zones: zones,
                 zoneCounter: zoneCounter,
                 waveState: {
@@ -133,14 +187,56 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             };
 
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data));
-            const downloadNode = document.createElement('a');
-            downloadNode.setAttribute("href", dataStr);
-            downloadNode.setAttribute("download", "projet_port.json");
-            document.body.appendChild(downloadNode);
-            downloadNode.click();
-            downloadNode.remove();
+            zip.file("project.json", JSON.stringify(data));
+
+            zip.generateAsync({ type: "blob" }).then(function (content) {
+                const url = URL.createObjectURL(content);
+                const downloadNode = document.createElement('a');
+                downloadNode.setAttribute("href", url);
+                downloadNode.setAttribute("download", "projet_port.zip");
+                document.body.appendChild(downloadNode);
+                downloadNode.click();
+                downloadNode.remove();
+                URL.revokeObjectURL(url);
+            });
         });
+    }
+
+    function loadProjectFromFile(file) {
+        if (file.name.toLowerCase().endsWith('.zip')) {
+            // Load zip
+            JSZip.loadAsync(file).then(function (zip) {
+                return zip.file("project.json").async("string").then(function (jsonContent) {
+                    const data = JSON.parse(jsonContent);
+                    const imageFilename = data.imageFilename;
+                    if (imageFilename && zip.file(imageFilename)) {
+                        return zip.file(imageFilename).async("base64").then(function (base64Data) {
+                            const ext = imageFilename.split('.').pop().toLowerCase();
+                            const mimeType = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+                            data.imageSrc = `data:${mimeType};base64,${base64Data}`;
+                            initProjectData(data);
+                        });
+                    } else {
+                        initProjectData(data);
+                    }
+                });
+            }).catch(function (err) {
+                console.error("Erreur zip:", err);
+                alert("Erreur lors de la lecture du fichier ZIP: " + err);
+            });
+        } else {
+            // assume json (backward compatible)
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    initProjectData(data);
+                } catch (err) {
+                    alert("Fichier de projet invalide.");
+                }
+            };
+            reader.readAsText(file);
+        }
     }
 
     if (btnLoadProject) {
@@ -148,47 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         loadFileInput.addEventListener('change', function () {
             if (this.files.length === 0) return;
             const file = this.files[0];
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = JSON.parse(e.target.result);
-                    if (data.imageSrc) {
-                        const img = new Image();
-                        img.onload = () => {
-                            currentImage = img;
-                            zones = data.zones || [];
-                            zoneCounter = data.zoneCounter || 1;
-                            waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
-
-                            if (data.adjustments) {
-                                brightnessInput.value = data.adjustments.brightness || "100";
-                                waveIntensityInput.value = data.adjustments.waveIntensity || "65";
-                            }
-
-                            isDrawing = false;
-                            currentPolygon = [];
-                            selectedZoneId = null;
-                            mergeState.active = false;
-                            mergeState.zone1Id = null;
-
-                            setTool('draw');
-                            toolBtns.forEach(b => {
-                                b.classList.remove('active');
-                                if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
-                            });
-
-                            updateSimulationAndRender();
-                            showCanvas();
-                            updateControlsUI();
-                            loadFileInput.value = '';
-                        };
-                        img.src = data.imageSrc;
-                    }
-                } catch (err) {
-                    alert("Fichier de projet invalide.");
-                }
-            };
-            reader.readAsText(file);
+            loadProjectFromFile(file);
         });
     }
 
@@ -209,9 +265,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const file = files[0];
 
+        // Check if it's a project file
+        if (file.name.toLowerCase().endsWith('.zip') || file.name.toLowerCase().endsWith('.json')) {
+            loadProjectFromFile(file);
+            return;
+        }
+
         // Ensure it's an image
         if (!file.type.match('image.*')) {
-            alert('Veuillez sélectionner une image valide (PNG, JPG).');
+            alert('Veuillez sélectionner une image valide (PNG, JPG) ou un fichier de projet (ZIP, JSON).');
             return;
         }
 
@@ -233,6 +295,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     b.classList.remove('active');
                     if (b.getAttribute('data-tool') === 'draw') b.classList.add('active');
                 });
+
+                // Set native dimensions and reset zoom
+                canvas.width = currentImage.width;
+                canvas.height = currentImage.height;
+                fitCanvasToScreen();
+
                 renderCanvas();
                 showCanvas();
                 updateControlsUI();
@@ -248,12 +316,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderCanvas() {
         if (!currentImage) return;
 
-        // For this calculator, we want the canvas to match the image dimensions intrinsically
-        // but we use CSS to scale it visually to fit the container.
-        // This is important because later drawing logic (cells) needs to map to image pixels.
-
-        canvas.width = currentImage.width;
-        canvas.height = currentImage.height;
+        // Ensure canvas intrinsic dimensions match the image
+        if (canvas.width !== currentImage.width) canvas.width = currentImage.width;
+        if (canvas.height !== currentImage.height) canvas.height = currentImage.height;
 
         // Clear canvas and draw image
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -344,6 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         canvasContainer.classList.remove('hidden');
         sidebarPanel.classList.remove('hidden');
+        if (toolsPanel) toolsPanel.classList.remove('hidden');
         updateZoneListUI();
     }
 
@@ -366,10 +432,102 @@ document.addEventListener('DOMContentLoaded', () => {
 
         canvasContainer.classList.add('hidden');
         sidebarPanel.classList.add('hidden');
+        if (toolsPanel) toolsPanel.classList.add('hidden');
 
         uploadZone.style.opacity = '1';
         uploadZone.style.pointerEvents = 'auto';
     }
+
+    // --- Zoom and Theme Controls ---
+    const btnZoomIn = document.getElementById('btn-zoom-in');
+    const btnZoomOut = document.getElementById('btn-zoom-out');
+    const btnZoomFit = document.getElementById('btn-zoom-fit');
+    const btnThemeToggle = document.getElementById('btn-theme-toggle');
+
+    if (btnThemeToggle) {
+        btnThemeToggle.addEventListener('click', () => {
+            const isDark = document.body.getAttribute('data-theme') === 'dark';
+            if (isDark) {
+                document.body.removeAttribute('data-theme');
+                btnThemeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>';
+            } else {
+                document.body.setAttribute('data-theme', 'dark');
+                btnThemeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>';
+            }
+        });
+    }
+
+    function fitCanvasToScreen() {
+        if (!currentImage) return;
+        const padding = 48;
+        // Check ratio to decide if we scale to width or height so it "takes up all the size"
+        const canvasRatio = currentImage.width / currentImage.height;
+        const wrapperRatio = (canvasWrapper.clientWidth - padding) / (canvasWrapper.clientHeight - padding);
+
+        // Target covering maximum possible space while maintaining aspect ratio and not necessarily scaling down if small
+        let newZoom;
+        if (canvasRatio > wrapperRatio) {
+            // Image is wider than container, scale to width
+            newZoom = (canvasWrapper.clientWidth - padding) / currentImage.width;
+        } else {
+            // Image is taller than container, scale to height
+            newZoom = (canvasWrapper.clientHeight - padding) / currentImage.height;
+        }
+
+        currentZoom = Math.max(0.1, newZoom);
+        applyZoom();
+    }
+
+    function applyZoom() {
+        if (!currentImage) return;
+        canvas.style.width = `${currentImage.width * currentZoom}px`;
+        canvas.style.height = `${currentImage.height * currentZoom}px`;
+    }
+
+    function changeZoom(factor, centerX, centerY) {
+        if (!currentImage) return;
+
+        const newZoom = Math.max(0.05, Math.min(currentZoom * factor, 15));
+        if (newZoom === currentZoom) return;
+
+        // If no center provided, zoom towards center of visible area
+        if (centerX === undefined || centerY === undefined) {
+            const rect = canvas.getBoundingClientRect();
+            centerX = (canvasWrapper.clientWidth / 2 - rect.left);
+            centerY = (canvasWrapper.clientHeight / 2 - rect.top);
+        }
+
+        const ratioX = centerX / (currentImage.width * currentZoom);
+        const ratioY = centerY / (currentImage.height * currentZoom);
+
+        currentZoom = newZoom;
+        applyZoom();
+
+        // Adjust scroll position
+        const newRect = canvas.getBoundingClientRect();
+        const newCursorX = newRect.width * ratioX;
+        const newCursorY = newRect.height * ratioY;
+
+        canvasWrapper.scrollBy(newCursorX - centerX, newCursorY - centerY);
+    }
+
+    if (btnZoomIn) btnZoomIn.addEventListener('click', () => changeZoom(1.2));
+    if (btnZoomOut) btnZoomOut.addEventListener('click', () => changeZoom(0.8));
+    if (btnZoomFit) btnZoomFit.addEventListener('click', fitCanvasToScreen);
+
+    canvasWrapper.addEventListener('wheel', (e) => {
+        if (!currentImage) return;
+        // Allows zoom with Ctrl/Cmd key like classic web apps, or universally since it's an editor
+        if (e.ctrlKey || e.metaKey || document.activeElement === canvasWrapper || e.shiftKey) {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const cursorX = e.clientX - rect.left;
+            const cursorY = e.clientY - rect.top;
+
+            const zoomChange = e.deltaY < 0 ? 1.1 : 0.9;
+            changeZoom(zoomChange, cursorX, cursorY);
+        }
+    }, { passive: false });
 
     // --- Canvas Events for Drawing ---
 
