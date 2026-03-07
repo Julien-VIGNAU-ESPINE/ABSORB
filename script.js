@@ -451,30 +451,34 @@ document.addEventListener('DOMContentLoaded', () => {
         // Draw saved boats
         boatPaths.forEach(boat => {
             if (!boat.visible) return;
-            ctx.beginPath();
-            ctx.moveTo(boat.points[0].x, boat.points[0].y);
-            for (let i = 1; i < boat.points.length; i++) {
-                ctx.lineTo(boat.points[i].x, boat.points[i].y);
-            }
 
-            ctx.strokeStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
-            ctx.lineWidth = (boat.id === selectedBoatId) ? 8 : 6;
-            ctx.setLineDash([10, 10]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            if (boat.points.length > 1) {
-                const len = boat.points.length;
-                const p1 = boat.points[len - 2];
-                const p2 = boat.points[len - 1];
-                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+            // Only draw the dashed path if showPath is not explicitly false
+            if (boat.showPath !== false) {
                 ctx.beginPath();
-                ctx.moveTo(p2.x, p2.y);
-                ctx.lineTo(p2.x - 20 * Math.cos(angle - Math.PI / 6), p2.y - 20 * Math.sin(angle - Math.PI / 6));
-                ctx.lineTo(p2.x - 20 * Math.cos(angle + Math.PI / 6), p2.y - 20 * Math.sin(angle + Math.PI / 6));
-                ctx.closePath();
-                ctx.fillStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
-                ctx.fill();
+                ctx.moveTo(boat.points[0].x, boat.points[0].y);
+                for (let i = 1; i < boat.points.length; i++) {
+                    ctx.lineTo(boat.points[i].x, boat.points[i].y);
+                }
+
+                ctx.strokeStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
+                ctx.lineWidth = (boat.id === selectedBoatId) ? 8 : 6;
+                ctx.setLineDash([10, 10]);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                if (boat.points.length > 1) {
+                    const len = boat.points.length;
+                    const p1 = boat.points[len - 2];
+                    const p2 = boat.points[len - 1];
+                    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                    ctx.beginPath();
+                    ctx.moveTo(p2.x, p2.y);
+                    ctx.lineTo(p2.x - 20 * Math.cos(angle - Math.PI / 6), p2.y - 20 * Math.sin(angle - Math.PI / 6));
+                    ctx.lineTo(p2.x - 20 * Math.cos(angle + Math.PI / 6), p2.y - 20 * Math.sin(angle + Math.PI / 6));
+                    ctx.closePath();
+                    ctx.fillStyle = (boat.id === selectedBoatId) ? '#ffcc00' : '#00ffff';
+                    ctx.fill();
+                }
             }
 
             // Draw moving boat if running and has current head position
@@ -1295,6 +1299,23 @@ document.addEventListener('DOMContentLoaded', () => {
             updateSimulationAndRender();
         };
 
+        const btnTogglePath = document.createElement('button');
+        btnTogglePath.className = 'btn-toggle-folder';
+        btnTogglePath.style.background = 'none';
+        btnTogglePath.style.border = 'none';
+        btnTogglePath.style.cursor = 'pointer';
+        btnTogglePath.title = "Afficher/Masquer la route (pointillés)";
+        const pathVisible = boat.showPath !== false;
+        btnTogglePath.style.color = pathVisible ? 'inherit' : 'rgba(128,128,128,0.4)';
+        btnTogglePath.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="${pathVisible ? 'none' : '4 3'}"><path d="M3 12h2m4 0h2m4 0h2m4 0h2" stroke-linecap="round"/></svg>`;
+
+        btnTogglePath.onclick = (e) => {
+            e.stopPropagation();
+            boat.showPath = boat.showPath === false ? true : false;
+            updateBoatListUI();
+            renderCanvas();
+        };
+
         const titleInput = document.createElement('input');
         titleInput.type = 'text';
         titleInput.className = 'folder-title-input';
@@ -1306,6 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
         leftGroup.appendChild(btnToggleVis);
         leftGroup.appendChild(btnPlayBoat);
         leftGroup.appendChild(btnPingPong);
+        leftGroup.appendChild(btnTogglePath);
         leftGroup.appendChild(titleInput);
 
         const btnDel = document.createElement('button');
@@ -1995,7 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
 
-                let speedScale = 3.5; // Increased wave push speed for pollution
+                let speedScale = 5.0; // Stronger push from waves
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
 
@@ -2033,8 +2055,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 let diffuse = sumD / countD;
 
-                // Mix rate based on wave velocity + a 4% permanent baseline diffusion for 24h risk
-                let mixRate = Math.min(1.0, vMag * 0.8 + 0.04);
+                // Mix rate: wave velocity + strong 10% baseline diffusion for visible spread
+                let mixRate = Math.min(1.0, vMag * 1.0 + 0.10);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
                 // Pollution no longer evaporates (continuous simulation)
@@ -2063,13 +2085,17 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < numCells; i++) {
             let d = density[i];
             if (d > 0 && obstacles[i] === 0) {
-                let val = d / Math.max(0.5, maxDensity);
+                let val = d / Math.max(0.3, maxDensity);
                 val = Math.min(1.0, val);
 
-                const hue = 60 + ((1.0 - val) * 80); // Peak is 60 (yellow), fades to 140 (green)
-                const rgb = hslToRgb(hue / 360, 0.9, 0.6);
+                // Oil spill colors: deep red-orange at peak, fading to dark teal/purple at edges
+                const hue = 20 + ((1.0 - val) * 160); // 20=red-orange, 180=cyan
+                const sat = 0.95;
+                const lig = 0.45 + val * 0.1; // slightly brighter at center
+                const rgb = hslToRgb(hue / 360, sat, lig);
 
-                let alpha = Math.min(1.0, val * 2.0);
+                // Strong alpha - visible even at low density
+                let alpha = Math.min(1.0, 0.3 + val * 0.7);
 
                 heatImgData.data[i * 4] = rgb[0];
                 heatImgData.data[i * 4 + 1] = rgb[1];
@@ -2081,8 +2107,13 @@ document.addEventListener('DOMContentLoaded', () => {
         offCtx.putImageData(heatImgData, 0, 0);
 
         hctx.imageSmoothingEnabled = true;
-        hctx.filter = 'blur(10px)';
+        hctx.filter = 'blur(14px)';
         hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+        // Second pass at half blur to sharpen center
+        hctx.filter = 'blur(5px)';
+        hctx.globalAlpha = 0.5;
+        hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+        hctx.globalAlpha = 1.0;
 
         pollutionState.heatmapCanvas = heatCanvas;
 

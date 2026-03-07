@@ -123,6 +123,8 @@ body {
     box-shadow: var(--shadow-soft);
     gap: 16px;
     transition: all var(--transition-medium);
+    overflow-y: auto;
+    min-height: 0;
 }
 
 .glass-sidebar h2 {
