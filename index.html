@@ -53,7 +53,11 @@
                     </div>
                     <div class="slider-group">
                         <label for="sim-speed">Vitesse de simulation</label>
-                        <input type="range" id="sim-speed" min="1" max="10" value="1">
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="range" id="sim-speed" min="1" max="100" value="1" style="flex: 1;">
+                            <input type="number" id="sim-speed-num" min="1" max="100" value="1"
+                                style="width: 50px; background: var(--clr-background); border: 1px solid var(--clr-border); border-radius: 4px; color: var(--clr-text-main); padding: 2px 4px; font-size: 0.85rem;">
+                        </div>
                     </div>
                     <div class="slider-group"
                         style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 12px;">
@@ -64,6 +68,16 @@
                         style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
                         <label for="cb-persist-impact" style="margin-bottom: 0;">Traces Indélébiles</label>
                         <input type="checkbox" id="cb-persist-impact">
+                    </div>
+                    <div class="slider-group"
+                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
+                        <label for="cb-show-heatmap" style="margin-bottom: 0;">Afficher Heatmap</label>
+                        <input type="checkbox" id="cb-show-heatmap" checked>
+                    </div>
+                    <div class="slider-group"
+                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
+                        <label for="cb-cumulative-heatmap" style="margin-bottom: 0;">Heatmap Cumulée</label>
+                        <input type="checkbox" id="cb-cumulative-heatmap">
                     </div>
                 </div>
                 <!-- Scale ruler section -->

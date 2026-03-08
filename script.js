@@ -26,7 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCalcRisk = document.getElementById('btn-calc-risk');
     const cbShowImpact = document.getElementById('cb-show-impact');
     const cbPersistImpact = document.getElementById('cb-persist-impact');
+    const cbShowHeatmap = document.getElementById('cb-show-heatmap');
+    const cbCumulativeHeatmap = document.getElementById('cb-cumulative-heatmap');
     const simSpeedInput = document.getElementById('sim-speed');
+    const simSpeedNum = document.getElementById('sim-speed-num');
 
     // UI Tabs
     const tabZones = document.getElementById('tab-zones');
@@ -63,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
-    let pollutionState = { heatmapCanvas: null, impactCanvas: null, impactMask: null };
+    let pollutionState = { heatmapCanvas: null, cumulativeHeatmapCanvas: null, impactCanvas: null, impactMask: null, cumulativeDensity: null };
 
     // Boats State
     let boatPaths = [];
@@ -225,6 +228,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wakePowerInput) wakePowerInput.addEventListener('input', updateSimulationAndRender);
     if (cbShowImpact) cbShowImpact.addEventListener('change', renderCanvas);
     if (cbPersistImpact) cbPersistImpact.addEventListener('change', renderCanvas);
+    if (cbShowHeatmap) cbShowHeatmap.addEventListener('change', () => {
+        if (!simulationInterval && pollutionState.density) {
+            runPollutionSimulation();
+            renderCanvas();
+        }
+    });
+    if (cbCumulativeHeatmap) cbCumulativeHeatmap.addEventListener('change', () => {
+        runEstimation();
+        if (!simulationInterval && pollutionState.density) {
+            runPollutionSimulation();
+            renderCanvas();
+        }
+    });
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -248,7 +264,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (wakePowerInput) wakePowerInput.value = data.adjustments.wakePower || "50";
                     if (cbShowImpact && data.adjustments.showImpact !== undefined) cbShowImpact.checked = data.adjustments.showImpact;
                     if (cbPersistImpact && data.adjustments.persistImpact !== undefined) cbPersistImpact.checked = data.adjustments.persistImpact;
-                    if (simSpeedInput && data.adjustments.simSpeed !== undefined) simSpeedInput.value = data.adjustments.simSpeed;
+                    if (cbShowHeatmap && data.adjustments.showHeatmap !== undefined) cbShowHeatmap.checked = data.adjustments.showHeatmap;
+                    if (cbCumulativeHeatmap && data.adjustments.cumulativeHeatmap !== undefined) cbCumulativeHeatmap.checked = data.adjustments.cumulativeHeatmap;
+                    if (simSpeedInput && data.adjustments.simSpeed !== undefined) {
+                        simSpeedInput.value = data.adjustments.simSpeed;
+                        if (simSpeedNum) simSpeedNum.value = data.adjustments.simSpeed;
+                    }
+                }
+
+                if (data.pixelsPerMeter) {
+                    rulerState.pixelsPerMeter = data.pixelsPerMeter;
+                    if (scaleResult) scaleResult.textContent = `✅ Échelle: 1m = ${rulerState.pixelsPerMeter.toFixed(2)} px`;
+                    if (estScaleStatus) estScaleStatus.textContent = `✅ Échelle calibrée : 1m = ${rulerState.pixelsPerMeter.toFixed(2)} pixels`;
                 }
 
                 isDrawing = false;
@@ -311,8 +338,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     wakePower: wakePowerInput ? wakePowerInput.value : "50",
                     showImpact: cbShowImpact ? cbShowImpact.checked : true,
                     persistImpact: cbPersistImpact ? cbPersistImpact.checked : false,
+                    showHeatmap: cbShowHeatmap ? cbShowHeatmap.checked : true,
+                    cumulativeHeatmap: cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false,
                     simSpeed: simSpeedInput ? simSpeedInput.value : "1"
-                }
+                },
+                pixelsPerMeter: rulerState.pixelsPerMeter
             };
 
             zip.file("project.json", JSON.stringify(data));
@@ -1192,49 +1222,6 @@ document.addEventListener('DOMContentLoaded', () => {
         el.appendChild(header);
         el.appendChild(select);
 
-        // Show visual intensity slider for 'polluante' zones
-        if (zone.type === 'polluante') {
-            if (zone.pollutionIntensity === undefined) zone.pollutionIntensity = 0.1;
-
-            const intensityWrapper = document.createElement('div');
-            intensityWrapper.style.marginTop = '8px';
-            intensityWrapper.style.display = 'flex';
-            intensityWrapper.style.flexDirection = 'column';
-            intensityWrapper.style.gap = '4px';
-
-            const intensityLabel = document.createElement('label');
-            intensityLabel.style.fontSize = '0.8rem';
-            intensityLabel.style.color = 'var(--clr-text-muted)';
-            intensityLabel.style.display = 'flex';
-            intensityLabel.style.justifyContent = 'space-between';
-
-            const labelText = document.createElement('span');
-            labelText.textContent = 'Intensité visuelle';
-
-            const valueDisplay = document.createElement('span');
-            valueDisplay.style.fontWeight = '600';
-            valueDisplay.style.color = '#e67e22';
-            valueDisplay.textContent = `${Math.round(zone.pollutionIntensity * 100)}%`;
-
-            intensityLabel.appendChild(labelText);
-            intensityLabel.appendChild(valueDisplay);
-
-            const intensitySlider = document.createElement('input');
-            intensitySlider.type = 'range';
-            intensitySlider.min = '1';
-            intensitySlider.max = '200';
-            intensitySlider.value = Math.round(zone.pollutionIntensity * 100);
-            intensitySlider.style.accentColor = '#e67e22';
-
-            intensitySlider.oninput = (e) => {
-                zone.pollutionIntensity = parseInt(e.target.value) / 100;
-                valueDisplay.textContent = `${e.target.value}%`;
-            };
-
-            intensityWrapper.appendChild(intensityLabel);
-            intensityWrapper.appendChild(intensitySlider);
-            el.appendChild(intensityWrapper);
-        }
 
 
 
@@ -2035,6 +2022,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!pollutionState.density || pollutionState.cols !== cols || pollutionState.rows !== rows) {
             pollutionState.density = new Float32Array(numCells).fill(0);
+            pollutionState.cumulativeDensity = new Float32Array(numCells).fill(0);
             pollutionState.cols = cols;
             pollutionState.rows = rows;
         }
@@ -2261,53 +2249,63 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        let maxCumDensity = 0;
         for (let i = 0; i < numCells; i++) {
             density[i] = newDensity[i];
+            pollutionState.cumulativeDensity[i] = Math.max(pollutionState.cumulativeDensity[i], density[i]);
+            if (pollutionState.cumulativeDensity[i] > maxCumDensity) maxCumDensity = pollutionState.cumulativeDensity[i];
         }
 
-        const heatCanvas = document.createElement('canvas');
-        heatCanvas.width = canvas.width;
-        heatCanvas.height = canvas.height;
-        const hctx = heatCanvas.getContext('2d');
+        const showHeatmap = cbShowHeatmap ? cbShowHeatmap.checked : true;
+        const useCumulative = cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false;
 
-        offCtx.resetTransform();
-        offCtx.clearRect(0, 0, cols, rows);
-        const heatImgData = offCtx.createImageData(cols, rows);
+        if (showHeatmap) {
+            const heatCanvas = document.createElement('canvas');
+            heatCanvas.width = canvas.width;
+            heatCanvas.height = canvas.height;
+            const hctx = heatCanvas.getContext('2d');
 
-        for (let i = 0; i < numCells; i++) {
-            let d = density[i];
-            if (d > 0 && obstacles[i] === 0) {
-                let val = d / Math.max(0.3, maxDensity);
-                val = Math.min(1.0, val);
+            offCtx.resetTransform();
+            offCtx.clearRect(0, 0, cols, rows);
+            const heatImgData = offCtx.createImageData(cols, rows);
 
-                // Oil spill colors: deep red-orange at peak, fading to dark teal/purple at edges
-                const hue = 20 + ((1.0 - val) * 160); // 20=red-orange, 180=cyan
-                const sat = 0.95;
-                const lig = 0.45 + val * 0.1; // slightly brighter at center
-                const rgb = hslToRgb(hue / 360, sat, lig);
+            const displayDensity = useCumulative ? pollutionState.cumulativeDensity : density;
+            const displayMax = useCumulative ? maxCumDensity : maxDensity;
 
-                // Strong alpha - visible even at low density
-                let alpha = Math.min(1.0, 0.3 + val * 0.7);
+            for (let i = 0; i < numCells; i++) {
+                let d = displayDensity[i];
+                if (d > 0 && obstacles[i] === 0) {
+                    let val = d / Math.max(0.3, displayMax);
+                    val = Math.min(1.0, val);
 
-                heatImgData.data[i * 4] = rgb[0];
-                heatImgData.data[i * 4 + 1] = rgb[1];
-                heatImgData.data[i * 4 + 2] = rgb[2];
-                heatImgData.data[i * 4 + 3] = 255 * alpha;
+                    const hue = 20 + ((1.0 - val) * 160);
+                    const sat = 0.95;
+                    const lig = 0.45 + val * 0.1;
+                    const rgb = hslToRgb(hue / 360, sat, lig);
+
+                    let alpha = Math.min(1.0, 0.3 + val * 0.7);
+
+                    heatImgData.data[i * 4] = rgb[0];
+                    heatImgData.data[i * 4 + 1] = rgb[1];
+                    heatImgData.data[i * 4 + 2] = rgb[2];
+                    heatImgData.data[i * 4 + 3] = 255 * alpha;
+                }
             }
+
+            offCtx.putImageData(heatImgData, 0, 0);
+
+            hctx.imageSmoothingEnabled = true;
+            hctx.filter = 'blur(14px)';
+            hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+            hctx.filter = 'blur(5px)';
+            hctx.globalAlpha = 0.5;
+            hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
+            hctx.globalAlpha = 1.0;
+
+            pollutionState.heatmapCanvas = heatCanvas;
+        } else {
+            pollutionState.heatmapCanvas = null;
         }
-
-        offCtx.putImageData(heatImgData, 0, 0);
-
-        hctx.imageSmoothingEnabled = true;
-        hctx.filter = 'blur(14px)';
-        hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
-        // Second pass at half blur to sharpen center
-        hctx.filter = 'blur(5px)';
-        hctx.globalAlpha = 0.5;
-        hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
-        hctx.globalAlpha = 1.0;
-
-        pollutionState.heatmapCanvas = heatCanvas;
 
         // Calculate impacted coastlines
         const impactImgData = offCtx.createImageData(cols, rows);
@@ -2466,7 +2464,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const metersPerCell = cellSize / ppm;
             const m2PerCell = metersPerCell * metersPerCell;
 
-            const density = pollutionState.density;
+            const useCumulative = cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false;
+            const density = useCumulative ? (pollutionState.cumulativeDensity || pollutionState.density) : pollutionState.density;
             const totalSimCells = pollutionState.cols * pollutionState.rows;
             let pollutedCount = 0;
             for (let i = 0; i < totalSimCells; i++) {
@@ -2651,5 +2650,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initial display
     updateFormulaDisplay();
 
+
+    if (simSpeedInput && simSpeedNum) {
+        simSpeedInput.addEventListener('input', () => {
+            simSpeedNum.value = simSpeedInput.value;
+        });
+        simSpeedNum.addEventListener('input', () => {
+            let val = parseInt(simSpeedNum.value);
+            if (val < 1) val = 1;
+            if (val > 100) val = 100; // Increase max for manual input
+            simSpeedNum.value = val;
+            simSpeedInput.value = val;
+        });
+    }
 
 });
