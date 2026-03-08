@@ -1732,6 +1732,73 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    function updateCellStats() {
+        const statLiters = document.getElementById('stat-liters');
+        const statCoastCovered = document.getElementById('stat-coast-covered');
+        const statCoastImpact = document.getElementById('stat-coast-impacted');
+        const statEfficiency = document.getElementById('stat-efficiency');
+        if (!statLiters) return;
+
+        // --- Litres filtrés / an ---
+        const cellCapacityL = parseFloat(document.getElementById('est-cell-capacity')?.value) || 2000;
+        const litersFiltered = placedCells.length * cellCapacityL;
+        statLiters.textContent = litersFiltered >= 1000
+            ? `${(litersFiltered / 1000).toFixed(1)} kL`
+            : `${litersFiltered} L`;
+
+        // --- Côte impactée & couverte ---
+        if (!pollutionState.impactMask || !pollutionState.rows) {
+            statCoastCovered.textContent = '—';
+            statCoastImpact.textContent = '—';
+            statEfficiency.textContent = '—';
+            return;
+        }
+
+        const ppm = rulerState.pixelsPerMeter;
+        const cellSize = 6;
+        let impactedPixels = 0;
+        let coveredPixels = 0;
+
+        for (let y = 0; y < pollutionState.rows; y++) {
+            for (let x = 0; x < pollutionState.cols; x++) {
+                const i = y * pollutionState.cols + x;
+                if (pollutionState.obstacles && pollutionState.obstacles[i] === 1) {
+                    const val = pollutionState.cumulativeImpactMask
+                        ? pollutionState.cumulativeImpactMask[i]
+                        : (pollutionState.impactMask[i] || 0);
+                    if (val > 0) {
+                        impactedPixels++;
+                        const cx = x * cellSize + 3;
+                        const cy = y * cellSize + 3;
+                        for (let c = 0; c < placedCells.length; c++) {
+                            const cell = placedCells[c];
+                            if (Math.hypot(cx - cell.x, cy - cell.y) < cell.radius * 3.5) {
+                                coveredPixels++;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (ppm && ppm > 0) {
+            const mPerPx = 1 / ppm;
+            const impactedM = (impactedPixels * cellSize * mPerPx).toFixed(0);
+            const coveredM = (coveredPixels * cellSize * mPerPx).toFixed(0);
+            statCoastImpact.textContent = `${impactedM} m`;
+            statCoastCovered.textContent = `${coveredM} m`;
+        } else {
+            statCoastImpact.textContent = `${impactedPixels} px`;
+            statCoastCovered.textContent = `${coveredPixels} px`;
+        }
+
+        const efficiency = impactedPixels > 0
+            ? Math.round((coveredPixels / impactedPixels) * 100) : 0;
+        statEfficiency.textContent = `${efficiency}%`;
+        statEfficiency.style.color = efficiency >= 70 ? '#27ae60' : efficiency >= 40 ? '#e67e22' : '#e74c3c';
+    }
+
     function updateCellsListUI() {
         if (!cellsListContainer) return;
         cellsListContainer.innerHTML = '';
@@ -1739,6 +1806,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update counter
         const countLabel = document.getElementById('cells-count-label');
         if (countLabel) countLabel.textContent = placedCells.length;
+
+        // Update stats panel
+        updateCellStats();
 
         if (placedCells.length === 0) {
             cellsListContainer.innerHTML = '<p style="color: var(--clr-text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">Aucune cellule placée.</p>';
@@ -2407,6 +2477,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Build source resistance mask: cells are less effective inside pollution-source zones
+        // We do a single offscreen pass combining all polluante zones
+        if (!pollutionState.sourceMask || pollutionState.sourceMask.length !== numCells) {
+            pollutionState.sourceMask = new Float32Array(numCells).fill(0);
+        }
+        pollutionState.sourceMask.fill(0);
+
+        const polluanteZones = zones.filter(z => z.type === 'polluante');
+        if (polluanteZones.length > 0) {
+            offCtx.resetTransform();
+            offCtx.clearRect(0, 0, cols, rows);
+            offCtx.fillStyle = '#000000';
+            offCtx.fillRect(0, 0, cols, rows);
+            offCtx.scale(1 / cellSize, 1 / cellSize);
+
+            polluanteZones.forEach(zone => {
+                offCtx.beginPath();
+                if (zone.points.length > 0) {
+                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
+                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                }
+                offCtx.closePath();
+                offCtx.fillStyle = '#ffffff';
+                offCtx.fill();
+            });
+
+            const srcData = offCtx.getImageData(0, 0, cols, rows).data;
+            for (let i = 0; i < numCells; i++) {
+                pollutionState.sourceMask[i] = srcData[i * 4] > 128 ? 1.0 : 0.0;
+            }
+        }
+
         const wGrid = waveState.grid;
         const wMax = waveState.maxAllowedDist || 1;
 
@@ -2541,11 +2643,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (finalD < 0.005) finalD = 0;
 
-                // Apply cell absorption/reduction
+                // Source-zone resistance: cells are far less effective directly on a pollution source
+                // sourceMask[i] = 1.0 means "full source", 0.0 means "open water"
+                const sourceResistance = pollutionState.sourceMask ? pollutionState.sourceMask[i] : 0;
+
+                // Apply cell absorption/reduction (diminished near/inside source zones)
                 if (placedCells.length > 0 && finalD > 0) {
-                    const cellSize = 6;
-                    const cx = x * cellSize + cellSize / 2;
-                    const cy = y * cellSize + cellSize / 2;
+                    const cellSz = 6;
+                    const cx = x * cellSz + cellSz / 2;
+                    const cy = y * cellSz + cellSz / 2;
                     for (let c = 0; c < placedCells.length; c++) {
                         const cell = placedCells[c];
                         const dx = cx - cell.x;
@@ -2553,8 +2659,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         const dSq = dx * dx + dy * dy;
                         if (dSq < cell.radius * cell.radius) {
                             const dist = Math.sqrt(dSq);
-                            // Up to 97% reduction per simulation step near center
-                            const effect = 1.0 - (1.0 - dist / cell.radius) * 0.97;
+                            // Base efficiency 97%, reduced to ~10% inside pollution sources
+                            const maxAbsorb = 0.97 * (1.0 - sourceResistance * 0.88);
+                            const effect = 1.0 - (1.0 - dist / cell.radius) * maxAbsorb;
                             finalD *= effect;
                         }
                     }
@@ -2679,7 +2786,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         for (let c = 0; c < placedCells.length; c++) {
                             const cell = placedCells[c];
                             const dist = Math.hypot(cx - cell.x, cy - cell.y);
-                            const protectRadius = cell.radius * 2;
+                            const protectRadius = cell.radius * 3.5; // expanded coast protection radius
                             if (dist < protectRadius) {
                                 const strength = 1.0 - dist / protectRadius; // 1 at center, 0 at edge
                                 val *= (1.0 - strength * 0.95); // up to 95% cooling at center
