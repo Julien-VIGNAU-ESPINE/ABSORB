@@ -312,6 +312,42 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const cbCellsActive = document.getElementById('cb-cells-active');
+    if (cbCellsActive) cbCellsActive.addEventListener('change', () => {
+        if (pollutionState.density) {
+            runPollutionSimulation();
+            renderCanvas();
+        }
+    });
+
+    // Coast clean mode toggle
+    window._coastCleanMode = 'blue'; // default
+    const btnCleanBlue = document.getElementById('btn-clean-mode-blue');
+    const btnCleanHidden = document.getElementById('btn-clean-mode-hidden');
+
+    function setCleanMode(mode) {
+        window._coastCleanMode = mode;
+        if (btnCleanBlue) {
+            const active = mode === 'blue';
+            btnCleanBlue.style.border = active ? '2px solid #3498db' : '1px solid var(--clr-border)';
+            btnCleanBlue.style.color = active ? '#3498db' : '';
+            btnCleanBlue.style.fontWeight = active ? '700' : '';
+        }
+        if (btnCleanHidden) {
+            const active = mode === 'hidden';
+            btnCleanHidden.style.border = active ? '2px solid #27ae60' : '1px solid var(--clr-border)';
+            btnCleanHidden.style.color = active ? '#27ae60' : '';
+            btnCleanHidden.style.fontWeight = active ? '700' : '';
+        }
+        if (pollutionState.density) {
+            runPollutionSimulation();
+            renderCanvas();
+        }
+    }
+
+    if (btnCleanBlue) btnCleanBlue.addEventListener('click', () => setCleanMode('blue'));
+    if (btnCleanHidden) btnCleanHidden.addEventListener('click', () => setCleanMode('hidden'));
+
     function initProjectData(data) {
         if (data.imageSrc) {
             const img = new Image();
@@ -590,9 +626,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (pollutionState.heatmapCanvas) {
-            ctx.globalAlpha = pollutionIntensityInput ? (pollutionIntensityInput.value / 100) : 0.7;
-            ctx.drawImage(pollutionState.heatmapCanvas, 0, 0, canvas.width, canvas.height);
-            ctx.globalAlpha = 1.0;
+            // Only draw heatmap if checkbox is checked (or checkbox not present)
+            const showHeatmap = cbShowHeatmap ? cbShowHeatmap.checked : true;
+            if (showHeatmap) {
+                ctx.globalAlpha = pollutionIntensityInput ? (pollutionIntensityInput.value / 100) : 0.7;
+                ctx.drawImage(pollutionState.heatmapCanvas, 0, 0, canvas.width, canvas.height);
+                ctx.globalAlpha = 1.0;
+            }
         }
 
         // Draw saved zones
@@ -613,38 +653,46 @@ document.addEventListener('DOMContentLoaded', () => {
             drawPolygon(zone.points, fillColor, strokeColor, true, lineWidth);
         });
 
-        // Draw placed cells
-        placedCells.forEach(cell => {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
-            ctx.strokeStyle = '#3498db';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+        // Draw placed cells (only if active toggle is on AND not in "clean" hidden mode)
+        const cbCA = document.getElementById('cb-cells-active');
+        const cellsDrawActive = cbCA ? cbCA.checked : true;
+        const cleanModeHides = window._coastCleanMode === 'hidden';
 
-            // Cleaner water glow
-            const clrGrad = ctx.createRadialGradient(cell.x, cell.y, 0, cell.x, cell.y, cell.radius);
-            clrGrad.addColorStop(0, 'rgba(52, 152, 219, 0.4)');
-            clrGrad.addColorStop(1, 'rgba(52, 152, 219, 0)');
-            ctx.fillStyle = clrGrad;
-            ctx.beginPath();
-            ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
-            ctx.fill();
+        if (!cleanModeHides) {
+            placedCells.forEach(cell => {
+                ctx.save();
+                ctx.globalAlpha = cellsDrawActive ? 1.0 : 0.35; // dim when disabled
+                ctx.beginPath();
+                ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+                ctx.strokeStyle = cellsDrawActive ? '#3498db' : '#888';
+                ctx.lineWidth = 2;
+                ctx.stroke();
 
-            ctx.beginPath();
-            ctx.arc(cell.x, cell.y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = '#3498db';
-            ctx.fill();
-            ctx.strokeStyle = '#fff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
+                // Cleaner water glow
+                const clrGrad = ctx.createRadialGradient(cell.x, cell.y, 0, cell.x, cell.y, cell.radius);
+                clrGrad.addColorStop(0, cellsDrawActive ? 'rgba(52, 152, 219, 0.4)' : 'rgba(150,150,150,0.2)');
+                clrGrad.addColorStop(1, 'rgba(52, 152, 219, 0)');
+                ctx.fillStyle = clrGrad;
+                ctx.beginPath();
+                ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+                ctx.fill();
 
-            ctx.font = 'bold 10px Inter, sans-serif';
-            ctx.fillStyle = '#fff';
-            ctx.textAlign = 'center';
-            ctx.fillText("🔲", cell.x, cell.y + 4);
-            ctx.restore();
-        });
+                ctx.beginPath();
+                ctx.arc(cell.x, cell.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = cellsDrawActive ? '#3498db' : '#888';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.fillStyle = '#fff';
+                ctx.textAlign = 'center';
+                ctx.fillText(cellsDrawActive ? '🔲' : '⊘', cell.x, cell.y + 4);
+                ctx.globalAlpha = 1.0;
+                ctx.restore();
+            });
+        } // end if (!cleanModeHides)
 
         // Draw saved boats
         boatPaths.forEach(boat => {
@@ -2647,8 +2695,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 // sourceMask[i] = 1.0 means "full source", 0.0 means "open water"
                 const sourceResistance = pollutionState.sourceMask ? pollutionState.sourceMask[i] : 0;
 
-                // Apply cell absorption/reduction (diminished near/inside source zones)
-                if (placedCells.length > 0 && finalD > 0) {
+                // Apply cell absorption/reduction (only if cells are currently enabled)
+                const cellsEnabled = (() => {
+                    const cb = document.getElementById('cb-cells-active');
+                    return cb ? cb.checked : true;
+                })();
+                if (cellsEnabled && placedCells.length > 0 && finalD > 0) {
                     const cellSz = 6;
                     const cx = x * cellSz + cellSz / 2;
                     const cy = y * cellSz + cellSz / 2;
@@ -2779,27 +2831,43 @@ document.addEventListener('DOMContentLoaded', () => {
                         let val = currentIntensity / Math.max(0.3, maxDensity);
                         val = Math.max(0.3, Math.min(1.0, val));
 
-                        // Apply cooling from nearby cells: each cell reduces val toward 0
-                        // val=1 → red, val=0 → blue (full cool)
-                        const cx = x * 6 + 3;
-                        const cy = y * 6 + 3;
-                        for (let c = 0; c < placedCells.length; c++) {
-                            const cell = placedCells[c];
-                            const dist = Math.hypot(cx - cell.x, cy - cell.y);
-                            const protectRadius = cell.radius * 3.5; // expanded coast protection radius
-                            if (dist < protectRadius) {
-                                const strength = 1.0 - dist / protectRadius; // 1 at center, 0 at edge
-                                val *= (1.0 - strength * 0.95); // up to 95% cooling at center
+                        // Apply cooling from nearby cells only if cells toggle is active
+                        const cbCellsAct = document.getElementById('cb-cells-active');
+                        const coastCellsActive = cbCellsAct ? cbCellsAct.checked : true;
+                        if (coastCellsActive) {
+                            const cx = x * 6 + 3;
+                            const cy = y * 6 + 3;
+                            for (let c = 0; c < placedCells.length; c++) {
+                                const cell = placedCells[c];
+                                const dist = Math.hypot(cx - cell.x, cy - cell.y);
+                                const protectRadius = cell.radius * 3.5;
+                                if (dist < protectRadius) {
+                                    const strength = 1.0 - dist / protectRadius;
+                                    val *= (1.0 - strength * 0.95);
+                                }
                             }
                         }
 
                         // Full hue range: red (20) → orange → yellow → green → cyan → blue (220)
-                        const hue = 20 + ((1.0 - val) * 200);
-                        const rgb = hslToRgb(hue / 360, 0.95, 0.45 + val * 0.1);
-                        impactImgData.data[i * 4] = rgb[0];
-                        impactImgData.data[i * 4 + 1] = rgb[1];
-                        impactImgData.data[i * 4 + 2] = rgb[2];
-                        impactImgData.data[i * 4 + 3] = 255;
+                        // Determine display mode for cooled zones
+                        const cleanModeHidden = window._coastCleanMode === 'hidden';
+                        const coolingThreshold = 0.08; // val below this = "fully clean" in hidden mode
+
+                        if (cleanModeHidden && val < coolingThreshold) {
+                            // Hidden mode: if cell coverage is strong enough, coast pixel disappears
+                            // (leave impactImgData at 0 = transparent)
+                        } else {
+                            // Blue mode: use a lighter, less saturated blue at low val
+                            // Clamp hue to max 200 for a softer cyan-blue instead of deep navy
+                            const hue = Math.min(200, 20 + ((1.0 - val) * 200));
+                            const sat = val < 0.2 ? 0.5 + val * 2 : 0.95; // desaturate when very cool
+                            const lig = val < 0.2 ? 0.65 + (0.2 - val) * 0.5 : 0.45 + val * 0.1; // lighter when cool
+                            const rgb = hslToRgb(hue / 360, sat, Math.min(0.85, lig));
+                            impactImgData.data[i * 4] = rgb[0];
+                            impactImgData.data[i * 4 + 1] = rgb[1];
+                            impactImgData.data[i * 4 + 2] = rgb[2];
+                            impactImgData.data[i * 4 + 3] = 255;
+                        }
                         hasImpact = true;
                     }
 
@@ -2960,6 +3028,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Si taux < 20% : on affiche un avertissement de sous-dimensionnement
         // ═══════════════════════════════════════════════════════════
         const finalCells = Math.max(cellsFromVolume, cellsFromSpacing || cellsFromVolume);
+        // Min = purely volumetric (no spatial constraint)
+        const minCells = cellsFromVolume > 0 ? cellsFromVolume : (cellsFromSpacing > 0 ? Math.ceil(cellsFromSpacing * 0.5) : 1);
+        // Max = coverage at 3m minimum spacing (realistic upper bound)
+        const maxCells = cellsFromCoast > 0
+            ? Math.ceil(coastLengthM / 3)  // 1 cell every 3m
+            : Math.ceil(finalCells * 1.5);
         const barrierLengthM = finalCells;
         const fillRate = finalCells > 0 && vTotalPerYear > 0
             ? Math.round((vTotalPerYear / (finalCells * cellCapacityL)) * 100)
@@ -3005,8 +3079,14 @@ document.addEventListener('DOMContentLoaded', () => {
             ? `${cellsFromSpacing} cellule${cellsFromSpacing !== 1 ? 's' : ''} (1 / ${maxSpacingM}m)`
             : '— (pas de données côtières)';
 
-        // Final
-        document.getElementById('est-cells').textContent = finalCells.toLocaleString('fr-FR');
+        // Final — Min / Recommandé / Max
+        const elCells = document.getElementById('est-cells');
+        if (elCells) elCells.innerHTML =
+            `<span style="color:#e67e22;font-size:0.9em;" title="Minimum volumétrique">min ${minCells}</span>` +
+            ` &nbsp;·&nbsp; ` +
+            `<strong style="font-size:1.15em;color:#27ae60;">${finalCells}</strong>` +
+            ` &nbsp;·&nbsp; ` +
+            `<span style="color:#e74c3c;font-size:0.9em;" title="Couverture maximale">max ${maxCells}</span>`;
         document.getElementById('est-barrier-length').textContent = `${barrierLengthM} m`;
 
         const recLabel = document.getElementById('cells-recommendation-label');

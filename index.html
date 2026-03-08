@@ -84,6 +84,11 @@
                             <label for="cb-cumulative-heatmap" style="margin-bottom: 0;">Heatmap Cumulée</label>
                             <input type="checkbox" id="cb-cumulative-heatmap">
                         </div>
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <label for="cb-cells-active" style="margin-bottom: 0;">🔲 Cellules actives</label>
+                            <input type="checkbox" id="cb-cells-active" checked>
+                        </div>
                     </div>
 
                     <!-- Coast Settings -->
@@ -102,6 +107,18 @@
                             style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
                             <label for="cb-coast-heatmap" style="margin-bottom: 0;">Côtes en Heatmap</label>
                             <input type="checkbox" id="cb-coast-heatmap">
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label
+                                style="font-size: 0.8rem; color: var(--clr-text-muted); display:block; margin-bottom: 5px;">Zones
+                                protégées par cellules :</label>
+                            <div style="display: flex; gap: 6px;">
+                                <button id="btn-clean-mode-blue" class="btn-secondary btn-small active"
+                                    style="flex:1; font-size:0.78rem; padding: 4px 6px; border: 2px solid #3498db; color:#3498db;">🔵
+                                    Bleu clair</button>
+                                <button id="btn-clean-mode-hidden" class="btn-secondary btn-small"
+                                    style="flex:1; font-size:0.78rem; padding: 4px 6px;">✨ Propre</button>
+                            </div>
                         </div>
                     </div>
                 </div>
