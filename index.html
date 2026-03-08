@@ -48,10 +48,6 @@
                         <input type="range" id="wake-power" min="10" max="150" value="50">
                     </div>
                     <div class="slider-group">
-                        <label for="pollution-intensity">Opacité pollution</label>
-                        <input type="range" id="pollution-intensity" min="10" max="100" value="70">
-                    </div>
-                    <div class="slider-group">
                         <label for="sim-speed">Vitesse de simulation</label>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <input type="range" id="sim-speed" min="1" max="100" value="1" style="flex: 1;">
@@ -59,25 +55,53 @@
                                 style="width: 50px; background: var(--clr-background); border: 1px solid var(--clr-border); border-radius: 4px; color: var(--clr-text-main); padding: 2px 4px; font-size: 0.85rem;">
                         </div>
                     </div>
-                    <div class="slider-group"
-                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 12px;">
-                        <label for="cb-show-impact" style="margin-bottom: 0;">Alerte Côtes Rouges</label>
-                        <input type="checkbox" id="cb-show-impact" checked>
+
+                    <!-- Sub-tabs for Simulation -->
+                    <div class="sim-sub-tabs"
+                        style="display: flex; gap: 4px; background: var(--clr-border); padding: 2px; border-radius: 6px; margin-top: 15px; margin-bottom: 12px;">
+                        <button id="btn-sub-tab-water" class="sim-sub-tab-btn active"
+                            style="flex: 1; border: none; background: white; color: var(--clr-text-main); padding: 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">💧
+                            Eau</button>
+                        <button id="btn-sub-tab-coast" class="sim-sub-tab-btn"
+                            style="flex: 1; border: none; background: transparent; color: var(--clr-text-muted); padding: 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">🏝️
+                            Côte</button>
                     </div>
-                    <div class="slider-group"
-                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
-                        <label for="cb-persist-impact" style="margin-bottom: 0;">Traces Indélébiles</label>
-                        <input type="checkbox" id="cb-persist-impact">
+
+                    <!-- Water Settings -->
+                    <div id="sim-panel-water">
+                        <div class="slider-group">
+                            <label for="pollution-intensity">Opacité pollution</label>
+                            <input type="range" id="pollution-intensity" min="10" max="100" value="70">
+                        </div>
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <label for="cb-show-heatmap" style="margin-bottom: 0;">Afficher Heatmap</label>
+                            <input type="checkbox" id="cb-show-heatmap" checked>
+                        </div>
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <label for="cb-cumulative-heatmap" style="margin-bottom: 0;">Heatmap Cumulée</label>
+                            <input type="checkbox" id="cb-cumulative-heatmap">
+                        </div>
                     </div>
-                    <div class="slider-group"
-                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
-                        <label for="cb-show-heatmap" style="margin-bottom: 0;">Afficher Heatmap</label>
-                        <input type="checkbox" id="cb-show-heatmap" checked>
-                    </div>
-                    <div class="slider-group"
-                        style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 4px;">
-                        <label for="cb-cumulative-heatmap" style="margin-bottom: 0;">Heatmap Cumulée</label>
-                        <input type="checkbox" id="cb-cumulative-heatmap">
+
+                    <!-- Coast Settings -->
+                    <div id="sim-panel-coast" class="hidden">
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center;">
+                            <label for="cb-show-impact" style="margin-bottom: 0;">Alerte Côtes Rouges</label>
+                            <input type="checkbox" id="cb-show-impact" checked>
+                        </div>
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <label for="cb-persist-impact" style="margin-bottom: 0;">Traces Indélébiles</label>
+                            <input type="checkbox" id="cb-persist-impact">
+                        </div>
+                        <div class="slider-group"
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            <label for="cb-coast-heatmap" style="margin-bottom: 0;">Côtes en Heatmap</label>
+                            <input type="checkbox" id="cb-coast-heatmap">
+                        </div>
                     </div>
                 </div>
                 <!-- Scale ruler section -->

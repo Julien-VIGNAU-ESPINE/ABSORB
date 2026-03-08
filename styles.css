@@ -910,3 +910,13 @@ canvas {
     pointer-events: none;
     z-index: 10;
 }
+
+/* Simulation Sub-tabs */
+.sim-sub-tab-btn:hover:not(.active) {
+    color: var(--clr-text-main) !important;
+}
+
+.sim-sub-tab-btn.active {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    font-weight: 600;
+}

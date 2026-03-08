@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnCalcRisk = document.getElementById('btn-calc-risk');
     const cbShowImpact = document.getElementById('cb-show-impact');
     const cbPersistImpact = document.getElementById('cb-persist-impact');
+    const cbCoastHeatmap = document.getElementById('cb-coast-heatmap');
     const cbShowHeatmap = document.getElementById('cb-show-heatmap');
     const cbCumulativeHeatmap = document.getElementById('cb-cumulative-heatmap');
     const simSpeedInput = document.getElementById('sim-speed');
@@ -66,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentTool = 'draw'; // 'draw', 'merge', 'wave', 'erase'
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
-    let pollutionState = { heatmapCanvas: null, cumulativeHeatmapCanvas: null, impactCanvas: null, impactMask: null, cumulativeDensity: null };
+    let pollutionState = { heatmapCanvas: null, cumulativeHeatmapCanvas: null, impactCanvas: null, impactMask: null, cumulativeImpactMask: null, cumulativeDensity: null };
 
     // Boats State
     let boatPaths = [];
@@ -227,7 +228,48 @@ document.addEventListener('DOMContentLoaded', () => {
     waveIntensityInput.addEventListener('input', renderCanvas);
     if (wakePowerInput) wakePowerInput.addEventListener('input', updateSimulationAndRender);
     if (cbShowImpact) cbShowImpact.addEventListener('change', renderCanvas);
-    if (cbPersistImpact) cbPersistImpact.addEventListener('change', renderCanvas);
+    if (cbPersistImpact) cbPersistImpact.addEventListener('change', () => {
+        if (!simulationInterval && pollutionState.density) {
+            runPollutionSimulation();
+        }
+        renderCanvas();
+    });
+    if (cbCoastHeatmap) cbCoastHeatmap.addEventListener('change', () => {
+        if (!simulationInterval && pollutionState.density) {
+            runPollutionSimulation();
+        }
+        renderCanvas();
+    });
+
+    // Sub-tabs Simulation
+    const btnSubTabWater = document.getElementById('btn-sub-tab-water');
+    const btnSubTabCoast = document.getElementById('btn-sub-tab-coast');
+    const simPanelWater = document.getElementById('sim-panel-water');
+    const simPanelCoast = document.getElementById('sim-panel-coast');
+
+    if (btnSubTabWater && btnSubTabCoast) {
+        btnSubTabWater.onclick = () => {
+            btnSubTabWater.classList.add('active');
+            btnSubTabCoast.classList.remove('active');
+            btnSubTabWater.style.background = 'var(--clr-surface)';
+            btnSubTabWater.style.color = 'var(--clr-text-main)';
+            btnSubTabCoast.style.background = 'transparent';
+            btnSubTabCoast.style.color = 'var(--clr-text-muted)';
+            simPanelWater.classList.remove('hidden');
+            simPanelCoast.classList.add('hidden');
+        };
+        btnSubTabCoast.onclick = () => {
+            btnSubTabCoast.classList.add('active');
+            btnSubTabWater.classList.remove('active');
+            btnSubTabCoast.style.background = 'var(--clr-surface)';
+            btnSubTabCoast.style.color = 'var(--clr-text-main)';
+            btnSubTabWater.style.background = 'transparent';
+            btnSubTabWater.style.color = 'var(--clr-text-muted)';
+            simPanelCoast.classList.remove('hidden');
+            simPanelWater.classList.add('hidden');
+        };
+    }
+
     if (cbShowHeatmap) cbShowHeatmap.addEventListener('change', () => {
         if (!simulationInterval && pollutionState.density) {
             runPollutionSimulation();
@@ -264,6 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (wakePowerInput) wakePowerInput.value = data.adjustments.wakePower || "50";
                     if (cbShowImpact && data.adjustments.showImpact !== undefined) cbShowImpact.checked = data.adjustments.showImpact;
                     if (cbPersistImpact && data.adjustments.persistImpact !== undefined) cbPersistImpact.checked = data.adjustments.persistImpact;
+                    if (cbCoastHeatmap && data.adjustments.coastHeatmap !== undefined) cbCoastHeatmap.checked = data.adjustments.coastHeatmap;
                     if (cbShowHeatmap && data.adjustments.showHeatmap !== undefined) cbShowHeatmap.checked = data.adjustments.showHeatmap;
                     if (cbCumulativeHeatmap && data.adjustments.cumulativeHeatmap !== undefined) cbCumulativeHeatmap.checked = data.adjustments.cumulativeHeatmap;
                     if (simSpeedInput && data.adjustments.simSpeed !== undefined) {
@@ -338,6 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     wakePower: wakePowerInput ? wakePowerInput.value : "50",
                     showImpact: cbShowImpact ? cbShowImpact.checked : true,
                     persistImpact: cbPersistImpact ? cbPersistImpact.checked : false,
+                    coastHeatmap: cbCoastHeatmap ? cbCoastHeatmap.checked : false,
                     showHeatmap: cbShowHeatmap ? cbShowHeatmap.checked : true,
                     cumulativeHeatmap: cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false,
                     simSpeed: simSpeedInput ? simSpeedInput.value : "1"
@@ -2314,36 +2358,55 @@ document.addEventListener('DOMContentLoaded', () => {
         const checkRadius = 2; // How far to look for pollution
 
         if (!pollutionState.impactMask || pollutionState.impactMask.length !== numCells) {
-            pollutionState.impactMask = new Uint8Array(numCells);
+            pollutionState.impactMask = new Float32Array(numCells).fill(0);
+            pollutionState.cumulativeImpactMask = new Float32Array(numCells).fill(0);
         }
 
+        // Always clear current frame impact, but keep cumulativeImpactMask for history
+        pollutionState.impactMask.fill(0);
+
         const isPersistent = cbPersistImpact && cbPersistImpact.checked;
+        const useCoastHeatmap = cbCoastHeatmap && cbCoastHeatmap.checked;
 
         for (let y = checkRadius; y < rows - checkRadius; y++) {
             for (let x = checkRadius; x < cols - checkRadius; x++) {
                 let i = y * cols + x;
                 if (obstacles[i] === 1) { // It's a coast/obstacle
-                    let isImpacted = false;
+                    let maxLocalDensity = 0;
                     for (let oy = -checkRadius; oy <= checkRadius; oy++) {
                         for (let ox = -checkRadius; ox <= checkRadius; ox++) {
                             let ni = (y + oy) * cols + (x + ox);
                             if (obstacles[ni] === 0 && density[ni] > impactThreshold) {
-                                isImpacted = true;
-                                break;
+                                if (density[ni] > maxLocalDensity) maxLocalDensity = density[ni];
                             }
                         }
-                        if (isImpacted) break;
                     }
 
-                    if (isPersistent && isImpacted) {
-                        pollutionState.impactMask[i] = 1;
+                    // Always record to cumulative mask in the background
+                    if (maxLocalDensity > 0) {
+                        pollutionState.cumulativeImpactMask[i] = Math.max(pollutionState.cumulativeImpactMask[i], maxLocalDensity);
                     }
+                    // Record to current frame mask
+                    pollutionState.impactMask[i] = maxLocalDensity;
 
-                    if (isImpacted || (isPersistent && pollutionState.impactMask[i] === 1)) {
-                        impactImgData.data[i * 4] = 255;     // Base Red
-                        impactImgData.data[i * 4 + 1] = 0;
-                        impactImgData.data[i * 4 + 2] = 0;
-                        impactImgData.data[i * 4 + 3] = 255;
+                    const currentIntensity = isPersistent ? pollutionState.cumulativeImpactMask[i] : maxLocalDensity;
+
+                    if (currentIntensity > 0) {
+                        if (useCoastHeatmap) {
+                            let val = currentIntensity / Math.max(0.3, maxDensity);
+                            val = Math.min(1.0, val);
+                            const hue = 20 + ((1.0 - val) * 160);
+                            const rgb = hslToRgb(hue / 360, 0.95, 0.45 + val * 0.1);
+                            impactImgData.data[i * 4] = rgb[0];
+                            impactImgData.data[i * 4 + 1] = rgb[1];
+                            impactImgData.data[i * 4 + 2] = rgb[2];
+                            impactImgData.data[i * 4 + 3] = 255;
+                        } else {
+                            impactImgData.data[i * 4] = 255;     // Base Red
+                            impactImgData.data[i * 4 + 1] = 0;
+                            impactImgData.data[i * 4 + 2] = 0;
+                            impactImgData.data[i * 4 + 3] = 255;
+                        }
                         hasImpact = true;
                     }
                 }
@@ -2473,10 +2536,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             pollutedAreaM2 = pollutedCount * m2PerCell;
 
-            if (pollutionState.impactMask) {
+            if (pollutionState.cumulativeImpactMask) {
+                const usePersistentCoast = cbPersistImpact ? cbPersistImpact.checked : false;
+                const maskToUse = usePersistentCoast ? pollutionState.cumulativeImpactMask : pollutionState.impactMask;
                 let coastCount = 0;
-                for (let i = 0; i < pollutionState.impactMask.length; i++) {
-                    if (pollutionState.impactMask[i] === 1) coastCount++;
+                for (let i = 0; i < maskToUse.length; i++) {
+                    if (maskToUse[i] > 0) coastCount++;
                 }
                 coastLengthM = coastCount / ppm;
                 cellsFromCoast = Math.ceil(coastLengthM);   // 1 cellule/m = couverture totale
