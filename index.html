@@ -24,6 +24,7 @@
                 </div>
                 <nav class="page-nav">
                     <button id="nav-simulation" class="page-nav-btn active">🗺️ Simulation</button>
+                    <button id="nav-cells" class="page-nav-btn">🔲 Cellules</button>
                     <button id="nav-estimation" class="page-nav-btn">📊 Estimation</button>
                 </nav>
             </div>
@@ -152,6 +153,57 @@
                         <h2>Trajets Bateaux</h2>
                     </div>
                     <div id="boat-list-container" class="zone-list"></div>
+                </div>
+            </aside>
+
+            <!-- Cells Sidebar - Visible in Cells mode -->
+            <aside id="cells-sidebar-panel" class="glass-sidebar hidden">
+                <div class="image-adjustments">
+                    <h2>🔲 Gestion des Cellules</h2>
+                    <p style="font-size: 0.85rem; color: var(--clr-text-muted); margin-bottom: 15px;">
+                        Configurez et placez vos cellules filtrantes en fonction des zones polluées constatées.
+                    </p>
+
+                    <div class="sidebar-divider"></div>
+
+                    <div class="est-formula-box" style="padding: 12px; margin-bottom: 15px;">
+                        <div class="est-formula-title">Recommandation</div>
+                        <div id="cells-recommendation-label"
+                            style="font-size: 1.1rem; font-weight: 600; color: #3498db; margin-top: 5px;">—</div>
+                    </div>
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 12px; background: var(--clr-surface); border-radius: 8px; border: 1px solid var(--clr-border);">
+                        <span style="font-size: 0.85rem; color: var(--clr-text-muted);">Cellules placées</span>
+                        <span id="cells-count-label"
+                            style="font-size: 1.1rem; font-weight: 700; color: #3498db;">0</span>
+                    </div>
+
+                    <div style="margin-bottom: 12px;">
+                        <button id="btn-toggle-cell-tool" class="btn-primary btn-small"
+                            style="width: 100%; background: linear-gradient(135deg, #3498db, #2980b9);">
+                            🖊️ Placer des cellules
+                        </button>
+                    </div>
+
+                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
+                        <label style="font-size: 0.85rem; color: var(--clr-text-muted); white-space: nowrap;">Nb auto
+                            :</label>
+                        <input type="number" id="cells-auto-count" min="1" max="200" value="" placeholder="auto"
+                            style="flex:1; background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 6px; padding: 5px 8px; color: var(--clr-text-main); font-size: 0.9rem;">
+                    </div>
+
+                    <div style="display: flex; gap: 8px; margin-bottom:15px;">
+                        <button id="btn-auto-place" class="btn-primary btn-small" style="flex: 1;">Génération
+                            auto</button>
+                        <button id="btn-clear-cells" class="btn-secondary btn-small" style="color:#e74c3c">Tout
+                            effacer</button>
+                    </div>
+
+                    <div class="sidebar-divider"></div>
+
+                    <h2>Liste des cellules</h2>
+                    <div id="cells-list-container" class="zone-list"></div>
                 </div>
             </aside>
 

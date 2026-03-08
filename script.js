@@ -19,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnClearWaves = document.getElementById('btn-clear-waves');
     const toolBtns = document.querySelectorAll('.tool-btn');
     const sidebarPanel = document.getElementById('sidebar-panel');
+    const cellsSidebarPanel = document.getElementById('cells-sidebar-panel');
     const toolsPanel = document.getElementById('tools-panel');
     const btnAddFolder = document.getElementById('btn-add-folder');
     const zoneListContainer = document.getElementById('zone-list-container');
@@ -38,6 +39,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const zonesSection = document.getElementById('zones-section');
     const boatsSection = document.getElementById('boats-section');
     const boatListContainer = document.getElementById('boat-list-container');
+    const cellsListContainer = document.getElementById('cells-list-container');
+    const btnAutoPlace = document.getElementById('btn-auto-place');
+    const btnClearCells = document.getElementById('btn-clear-cells');
 
     // Save & Load
     const btnSaveProject = document.getElementById('btn-save-project');
@@ -68,6 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let mergeState = { active: false, zone1Id: null };
     let waveState = { active: false, isDrawingSource: false, sourceLine: [], heatmapCanvas: null };
     let pollutionState = { heatmapCanvas: null, cumulativeHeatmapCanvas: null, impactCanvas: null, impactMask: null, cumulativeImpactMask: null, cumulativeDensity: null };
+    let placedCells = [];
+    let cellCounter = 1;
 
     // Boats State
     let boatPaths = [];
@@ -141,6 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateControlsUI();
         updateZoneListUI();
         updateBoatListUI();
+        updateCellsListUI();
         renderCanvas();
     }
 
@@ -161,28 +168,49 @@ document.addEventListener('DOMContentLoaded', () => {
         zonesSection.classList.add('hidden');
     });
 
-    // --- Page Navigation (Simulation / Estimation) ---
+    // --- Page Navigation (Simulation / Cells / Estimation) ---
     const navSimulation = document.getElementById('nav-simulation');
+    const navCells = document.getElementById('nav-cells');
     const navEstimation = document.getElementById('nav-estimation');
     const estimationPage = document.getElementById('estimation-page');
     const workspaceWrapper = document.querySelector('.workspace-wrapper');
 
-    if (navSimulation && navEstimation) {
-        navSimulation.addEventListener('click', () => {
-            navSimulation.classList.add('active');
-            navEstimation.classList.remove('active');
-            workspaceWrapper.classList.remove('hidden');
-            if (estimationPage) estimationPage.classList.add('hidden');
-        });
+    if (navSimulation && navCells && navEstimation) {
+        navSimulation.addEventListener('click', () => setActivePage('sim'));
+        navCells.addEventListener('click', () => setActivePage('cells'));
+        navEstimation.addEventListener('click', () => setActivePage('est'));
+    }
 
-        navEstimation.addEventListener('click', () => {
+    function setActivePage(page) {
+        // Nav Buttons
+        navSimulation.classList.remove('active');
+        navCells.classList.remove('active');
+        navEstimation.classList.remove('active');
+
+        // Layout show/hide
+        if (workspaceWrapper) workspaceWrapper.classList.add('hidden');
+        if (estimationPage) estimationPage.classList.add('hidden');
+        if (sidebarPanel) sidebarPanel.classList.add('hidden');
+        if (cellsSidebarPanel) cellsSidebarPanel.classList.add('hidden');
+
+        if (page === 'sim') {
+            navSimulation.classList.add('active');
+            if (workspaceWrapper) workspaceWrapper.classList.remove('hidden');
+            if (sidebarPanel) sidebarPanel.classList.remove('hidden');
+        } else if (page === 'cells') {
+            navCells.classList.add('active');
+            if (workspaceWrapper) workspaceWrapper.classList.remove('hidden');
+            if (cellsSidebarPanel) cellsSidebarPanel.classList.remove('hidden');
+            // Activate placement tool by default when entering cells page
+            setTool('cell');
+            updateCellToolBtn();
+            runEstimation();
+            renderCanvas();
+        } else if (page === 'est') {
             navEstimation.classList.add('active');
-            navSimulation.classList.remove('active');
-            workspaceWrapper.classList.add('hidden');
             if (estimationPage) estimationPage.classList.remove('hidden');
-            // Auto-run estimation when switching to the tab
             setTimeout(() => runEstimation(), 50);
-        });
+        }
     }
 
     // --- Drag and Drop Handling ---
@@ -296,6 +324,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 boatPaths = data.boatPaths || [];
                 boatPathCounter = data.boatPathCounter || 1;
+                placedCells = data.cells || [];
+                cellCounter = data.cellCounter || (placedCells.length > 0 ? Math.max(...placedCells.map(c => c.id)) + 1 : 1);
 
                 waveState.sourceLine = (data.waveState && data.waveState.sourceLine) ? data.waveState.sourceLine : [];
 
@@ -386,7 +416,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     cumulativeHeatmap: cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false,
                     simSpeed: simSpeedInput ? simSpeedInput.value : "1"
                 },
-                pixelsPerMeter: rulerState.pixelsPerMeter
+                pixelsPerMeter: rulerState.pixelsPerMeter,
+                cells: placedCells,
+                cellCounter: cellCounter
             };
 
             zip.file("project.json", JSON.stringify(data));
@@ -579,6 +611,39 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             drawPolygon(zone.points, fillColor, strokeColor, true, lineWidth);
+        });
+
+        // Draw placed cells
+        placedCells.forEach(cell => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = '#3498db';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Cleaner water glow
+            const clrGrad = ctx.createRadialGradient(cell.x, cell.y, 0, cell.x, cell.y, cell.radius);
+            clrGrad.addColorStop(0, 'rgba(52, 152, 219, 0.4)');
+            clrGrad.addColorStop(1, 'rgba(52, 152, 219, 0)');
+            ctx.fillStyle = clrGrad;
+            ctx.beginPath();
+            ctx.arc(cell.x, cell.y, cell.radius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cell.x, cell.y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#3498db';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.fillStyle = '#fff';
+            ctx.textAlign = 'center';
+            ctx.fillText("🔲", cell.x, cell.y + 4);
+            ctx.restore();
         });
 
         // Draw saved boats
@@ -924,6 +989,26 @@ document.addEventListener('DOMContentLoaded', () => {
             currentPolygon.push({ x, y });
             renderCanvas();
         }
+
+        if (currentTool === 'cell') {
+            const newCell = {
+                id: Date.now(),
+                x: x,
+                y: y,
+                title: `Cellule ${cellCounter++}`,
+                radius: 25 // standard radius in pixels
+            };
+            placedCells.push(newCell);
+            updateCellsListUI();
+            runEstimation(); // To show impact in results
+
+            // Trigger a single simulation step to update the red/blue coast highlights immediately
+            if (!simulationInterval && pollutionState.density) {
+                runPollutionSimulation();
+            }
+
+            renderCanvas();
+        }
     });
 
     canvas.addEventListener('mousemove', (e) => {
@@ -1141,25 +1226,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
             setTimeout(() => { requestAnimationFrame(runChunk); }, 10);
-        });
-    }
-
-    const btnAutoPlace = document.getElementById('btn-auto-place-cells');
-    if (btnAutoPlace) {
-        btnAutoPlace.addEventListener('click', () => {
-            // Trigger estimation which includes computeAndDrawCellPlacement
-            runEstimation();
-
-            // Visual feedback: brief toggle or stay active
-            btnAutoPlace.classList.add('active');
-            setTimeout(() => btnAutoPlace.classList.remove('active'), 500);
-
-            // Switch to zones tab to show potential sidebar info if needed, 
-            // but primarily ensure overlay is calculated.
-            if (activeTab !== 'zones') {
-                const tabZones = document.getElementById('tab-zones');
-                if (tabZones) tabZones.click();
-            }
         });
     }
 
@@ -1637,6 +1703,193 @@ document.addEventListener('DOMContentLoaded', () => {
                 return closest;
             }
         }, { offset: Number.NEGATIVE_INFINITY }).element;
+    }
+
+    // --- Cells UI ---
+
+    const btnToggleCellTool = document.getElementById('btn-toggle-cell-tool');
+
+    function updateCellToolBtn() {
+        if (!btnToggleCellTool) return;
+        const isActive = currentTool === 'cell';
+        if (isActive) {
+            btnToggleCellTool.style.background = 'linear-gradient(135deg, #27ae60, #219a52)';
+            btnToggleCellTool.textContent = '✅ Outil actif — cliquez sur la carte';
+        } else {
+            btnToggleCellTool.style.background = 'linear-gradient(135deg, #3498db, #2980b9)';
+            btnToggleCellTool.textContent = '🖊️ Placer des cellules';
+        }
+    }
+
+    if (btnToggleCellTool) {
+        btnToggleCellTool.onclick = () => {
+            if (currentTool === 'cell') {
+                setTool('draw');
+            } else {
+                setTool('cell');
+            }
+            updateCellToolBtn();
+        };
+    }
+
+    function updateCellsListUI() {
+        if (!cellsListContainer) return;
+        cellsListContainer.innerHTML = '';
+
+        // Update counter
+        const countLabel = document.getElementById('cells-count-label');
+        if (countLabel) countLabel.textContent = placedCells.length;
+
+        if (placedCells.length === 0) {
+            cellsListContainer.innerHTML = '<p style="color: var(--clr-text-muted); font-size: 0.9rem; text-align: center; margin-top: 20px;">Aucune cellule placée.</p>';
+            return;
+        }
+
+        placedCells.forEach(cell => {
+            const el = document.createElement('div');
+            el.className = 'zone-item';
+            el.innerHTML = `
+                <div class="zone-item-header">
+                    <span class="folder-title" style="color: #3498db">🔲 ${cell.title}</span>
+                    <button class="btn-delete" title="Supprimer">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            `;
+            el.querySelector('.btn-delete').onclick = () => {
+                placedCells = placedCells.filter(c => c.id !== cell.id);
+                updateCellsListUI();
+                runEstimation();
+                if (!simulationInterval && pollutionState.density) {
+                    runPollutionSimulation();
+                }
+                renderCanvas();
+            };
+            cellsListContainer.appendChild(el);
+        });
+    }
+
+    if (btnClearCells) {
+        btnClearCells.onclick = () => {
+            if (placedCells.length > 0 && confirm("Voulez-vous supprimer toutes les cellules ?")) {
+                placedCells = [];
+                updateCellsListUI();
+                runEstimation();
+                if (!simulationInterval && pollutionState.density) {
+                    runPollutionSimulation();
+                }
+                renderCanvas();
+            }
+        };
+    }
+
+    if (btnAutoPlace) {
+        btnAutoPlace.onclick = () => {
+            // Use user-specified count first, then fall back to recommendation
+            const autoCountInput = document.getElementById('cells-auto-count');
+            let count = autoCountInput && autoCountInput.value !== '' ? parseInt(autoCountInput.value) : 0;
+
+            if (count <= 0) {
+                // Fallback: use estimated recommendation
+                runEstimation();
+                const recLabel = document.getElementById('cells-recommendation-label');
+                const match = recLabel?.textContent.match(/\d+/);
+                count = match ? parseInt(match[0]) : 0;
+            }
+
+            if (count <= 0) return alert("Aucune pollution côtière détectée pour placer des cellules.");
+
+            // Clear existing cells and auto-place based on where pollution is highest
+            placedCells = [];
+
+            // Gather candidate points from BOTH water density AND coast impact
+            const candidates = [];
+
+            // Source 1: High-density water areas (place cells IN the water to intercept pollution)
+            if (pollutionState.density) {
+                const cellSize = 6;
+                for (let y = 0; y < pollutionState.rows; y++) {
+                    for (let x = 0; x < pollutionState.cols; x++) {
+                        const i = y * pollutionState.cols + x;
+                        if (pollutionState.obstacles && pollutionState.obstacles[i] === 0 && pollutionState.density[i] > 0.05) {
+                            candidates.push({
+                                x: x * cellSize + 3,
+                                y: y * cellSize + 3,
+                                score: pollutionState.density[i] * 2  // weight water density higher
+                            });
+                        }
+                    }
+                }
+            }
+
+            // Source 2: Impacted coastlines
+            if (pollutionState.impactMask) {
+                const checkRadius = 2;
+                for (let y = checkRadius; y < pollutionState.rows - checkRadius; y++) {
+                    for (let x = checkRadius; x < pollutionState.cols - checkRadius; x++) {
+                        const i = y * pollutionState.cols + x;
+                        if (pollutionState.impactMask[i] > 0) {
+                            candidates.push({
+                                x: x * 6 + 3,
+                                y: y * 6 + 3,
+                                score: pollutionState.impactMask[i]
+                            });
+                        }
+                    }
+                }
+            }
+
+            if (candidates.length > 0) {
+                // Sort by score descending
+                candidates.sort((a, b) => b.score - a.score);
+
+                // Pass 1: Greedy with spacing to ensure good spread
+                const minDistance = 35;
+                const remaining = [...candidates];
+                while (placedCells.length < count && remaining.length > 0) {
+                    const pt = remaining.shift();
+                    placedCells.push({
+                        id: Date.now() + placedCells.length,
+                        x: pt.x,
+                        y: pt.y,
+                        title: `Cellule Auto ${cellCounter++}`,
+                        radius: 25
+                    });
+                    for (let j = remaining.length - 1; j >= 0; j--) {
+                        if (Math.hypot(remaining[j].x - pt.x, remaining[j].y - pt.y) < minDistance) {
+                            remaining.splice(j, 1);
+                        }
+                    }
+                }
+
+                // Pass 2: Fill to exact count without spacing constraint
+                if (placedCells.length < count) {
+                    const placed = new Set(placedCells.map(c => `${Math.round(c.x)},${Math.round(c.y)}`));
+                    const extras = candidates.filter(p => !placed.has(`${Math.round(p.x)},${Math.round(p.y)}`));
+                    let ei = 0;
+                    while (placedCells.length < count && ei < extras.length) {
+                        const pt = extras[ei++];
+                        placedCells.push({
+                            id: Date.now() + placedCells.length,
+                            x: pt.x,
+                            y: pt.y,
+                            title: `Cellule Auto ${cellCounter++}`,
+                            radius: 25
+                        });
+                    }
+                }
+            } else {
+                alert('Aucune zone polluée détectée. Lancez d\'abord la simulation.');
+                return;
+            }
+
+            updateCellsListUI();
+            runEstimation();
+            if (!simulationInterval && pollutionState.density) {
+                runPollutionSimulation();
+            }
+            renderCanvas();
+        };
     }
 
     // --- Controls ---
@@ -2288,6 +2541,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (finalD < 0.005) finalD = 0;
 
+                // Apply cell absorption/reduction
+                if (placedCells.length > 0 && finalD > 0) {
+                    const cellSize = 6;
+                    const cx = x * cellSize + cellSize / 2;
+                    const cy = y * cellSize + cellSize / 2;
+                    for (let c = 0; c < placedCells.length; c++) {
+                        const cell = placedCells[c];
+                        const dx = cx - cell.x;
+                        const dy = cy - cell.y;
+                        const dSq = dx * dx + dy * dy;
+                        if (dSq < cell.radius * cell.radius) {
+                            const dist = Math.sqrt(dSq);
+                            // Up to 97% reduction per simulation step near center
+                            const effect = 1.0 - (1.0 - dist / cell.radius) * 0.97;
+                            finalD *= effect;
+                        }
+                    }
+                }
+
                 newDensity[i] = finalD;
                 if (finalD > maxDensity) maxDensity = finalD;
             }
@@ -2317,11 +2589,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const displayMax = useCumulative ? maxCumDensity : maxDensity;
 
             for (let i = 0; i < numCells; i++) {
-                let d = displayDensity[i];
-                if (d > 0 && obstacles[i] === 0) {
-                    let val = d / Math.max(0.3, displayMax);
-                    val = Math.min(1.0, val);
+                const d = displayDensity[i];
+                if (d <= 0 || obstacles[i] !== 0) continue;
 
+                let val = d / Math.max(0.3, displayMax);
+                val = Math.min(1.0, val);
+
+                {
                     const hue = 20 + ((1.0 - val) * 160);
                     const sat = 0.95;
                     const lig = 0.45 + val * 0.1;
@@ -2345,8 +2619,10 @@ document.addEventListener('DOMContentLoaded', () => {
             hctx.globalAlpha = 0.5;
             hctx.drawImage(offCanvas, 0, 0, canvas.width, canvas.height);
             hctx.globalAlpha = 1.0;
+            hctx.filter = 'none';
 
             pollutionState.heatmapCanvas = heatCanvas;
+
         } else {
             pollutionState.heatmapCanvas = null;
         }
@@ -2392,23 +2668,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     const currentIntensity = isPersistent ? pollutionState.cumulativeImpactMask[i] : maxLocalDensity;
 
                     if (currentIntensity > 0) {
-                        if (useCoastHeatmap) {
-                            let val = currentIntensity / Math.max(0.3, maxDensity);
-                            val = Math.min(1.0, val);
-                            const hue = 20 + ((1.0 - val) * 160);
-                            const rgb = hslToRgb(hue / 360, 0.95, 0.45 + val * 0.1);
-                            impactImgData.data[i * 4] = rgb[0];
-                            impactImgData.data[i * 4 + 1] = rgb[1];
-                            impactImgData.data[i * 4 + 2] = rgb[2];
-                            impactImgData.data[i * 4 + 3] = 255;
-                        } else {
-                            impactImgData.data[i * 4] = 255;     // Base Red
-                            impactImgData.data[i * 4 + 1] = 0;
-                            impactImgData.data[i * 4 + 2] = 0;
-                            impactImgData.data[i * 4 + 3] = 255;
+                        // Base heat value from pollution intensity (clamp min 0.3 so always warm without cells)
+                        let val = currentIntensity / Math.max(0.3, maxDensity);
+                        val = Math.max(0.3, Math.min(1.0, val));
+
+                        // Apply cooling from nearby cells: each cell reduces val toward 0
+                        // val=1 → red, val=0 → blue (full cool)
+                        const cx = x * 6 + 3;
+                        const cy = y * 6 + 3;
+                        for (let c = 0; c < placedCells.length; c++) {
+                            const cell = placedCells[c];
+                            const dist = Math.hypot(cx - cell.x, cy - cell.y);
+                            const protectRadius = cell.radius * 2;
+                            if (dist < protectRadius) {
+                                const strength = 1.0 - dist / protectRadius; // 1 at center, 0 at edge
+                                val *= (1.0 - strength * 0.95); // up to 95% cooling at center
+                            }
                         }
+
+                        // Full hue range: red (20) → orange → yellow → green → cyan → blue (220)
+                        const hue = 20 + ((1.0 - val) * 200);
+                        const rgb = hslToRgb(hue / 360, 0.95, 0.45 + val * 0.1);
+                        impactImgData.data[i * 4] = rgb[0];
+                        impactImgData.data[i * 4 + 1] = rgb[1];
+                        impactImgData.data[i * 4 + 2] = rgb[2];
+                        impactImgData.data[i * 4 + 3] = 255;
                         hasImpact = true;
                     }
+
                 }
             }
         }
@@ -2614,6 +2901,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Final
         document.getElementById('est-cells').textContent = finalCells.toLocaleString('fr-FR');
         document.getElementById('est-barrier-length').textContent = `${barrierLengthM} m`;
+
+        const recLabel = document.getElementById('cells-recommendation-label');
+        if (recLabel) recLabel.textContent = `${finalCells} cellule${finalCells > 1 ? 's' : ''}`;
 
         // ── Détail du calcul ──────────────────────────────────────
         const breakdown = document.getElementById('est-breakdown');
