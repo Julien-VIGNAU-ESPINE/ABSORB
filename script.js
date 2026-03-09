@@ -168,11 +168,17 @@ document.addEventListener('DOMContentLoaded', () => {
         zonesSection.classList.add('hidden');
     });
 
-    // --- Page Navigation (Simulation / Cells / Estimation) ---
+    // --- Page Navigation (Simulation / Cells / Estimation / Plans / Costs / Quote) ---
     const navSimulation = document.getElementById('nav-simulation');
     const navCells = document.getElementById('nav-cells');
     const navEstimation = document.getElementById('nav-estimation');
+    const navPlans = document.getElementById('nav-plans');
+    const navCosts = document.getElementById('nav-costs');
+    const navQuote = document.getElementById('nav-quote');
     const estimationPage = document.getElementById('estimation-page');
+    const plansPage = document.getElementById('plans-page');
+    const costsPage = document.getElementById('costs-page');
+    const quotePage = document.getElementById('quote-page');
     const workspaceWrapper = document.querySelector('.workspace-wrapper');
 
     if (navSimulation && navCells && navEstimation) {
@@ -180,16 +186,20 @@ document.addEventListener('DOMContentLoaded', () => {
         navCells.addEventListener('click', () => setActivePage('cells'));
         navEstimation.addEventListener('click', () => setActivePage('est'));
     }
+    if (navPlans) navPlans.addEventListener('click', () => setActivePage('plans'));
+    if (navCosts) navCosts.addEventListener('click', () => setActivePage('costs'));
+    if (navQuote) navQuote.addEventListener('click', () => setActivePage('quote'));
 
     function setActivePage(page) {
         // Nav Buttons
-        navSimulation.classList.remove('active');
-        navCells.classList.remove('active');
-        navEstimation.classList.remove('active');
+        [navSimulation, navCells, navEstimation, navPlans, navCosts, navQuote].forEach(b => b && b.classList.remove('active'));
 
         // Layout show/hide
         if (workspaceWrapper) workspaceWrapper.classList.add('hidden');
         if (estimationPage) estimationPage.classList.add('hidden');
+        if (plansPage) plansPage.classList.add('hidden');
+        if (costsPage) costsPage.classList.add('hidden');
+        if (quotePage) quotePage.classList.add('hidden');
         if (sidebarPanel) sidebarPanel.classList.add('hidden');
         if (cellsSidebarPanel) cellsSidebarPanel.classList.add('hidden');
 
@@ -201,7 +211,6 @@ document.addEventListener('DOMContentLoaded', () => {
             navCells.classList.add('active');
             if (workspaceWrapper) workspaceWrapper.classList.remove('hidden');
             if (cellsSidebarPanel) cellsSidebarPanel.classList.remove('hidden');
-            // Activate placement tool by default when entering cells page
             setTool('cell');
             updateCellToolBtn();
             runEstimation();
@@ -210,6 +219,18 @@ document.addEventListener('DOMContentLoaded', () => {
             navEstimation.classList.add('active');
             if (estimationPage) estimationPage.classList.remove('hidden');
             setTimeout(() => runEstimation(), 50);
+        } else if (page === 'plans') {
+            if (navPlans) navPlans.classList.add('active');
+            if (plansPage) plansPage.classList.remove('hidden');
+            setTimeout(() => renderPlansPage(), 50);
+        } else if (page === 'costs') {
+            navCosts.classList.add('active');
+            if (costsPage) costsPage.classList.remove('hidden');
+            setTimeout(() => runCosts(), 50);
+        } else if (page === 'quote') {
+            navQuote.classList.add('active');
+            if (quotePage) quotePage.classList.remove('hidden');
+            setTimeout(() => renderQuote(), 50);
         }
     }
 
@@ -3204,6 +3225,419 @@ document.addEventListener('DOMContentLoaded', () => {
             simSpeedNum.value = val;
             simSpeedInput.value = val;
         });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // COSTS PAGE LOGIC
+    // ═══════════════════════════════════════════════════════════════════
+
+    function fmt(n) {
+        return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+    }
+
+    // Store last computed costs so the quote can read them
+    let _lastCosts = {};
+
+    let appConfig = null;
+    let selectedPlanId = 'premium';
+    let appConfigData = null;
+
+    // Fetch configuration
+    if (window.ABSORB_CONFIG) {
+        appConfig = window.ABSORB_CONFIG;
+        applyConfig(appConfig);
+    } else {
+        console.warn("No ABSORB_CONFIG found. Using default values.");
+        // Default setup for select data attributes
+        const subSelect = document.getElementById('cost-sub-plan');
+        if (subSelect && subSelect.options.length > 0) {
+            Array.from(subSelect.options).forEach(opt => {
+                const priceMatch = opt.textContent.match(/(\d+)€/);
+                if (priceMatch) opt.dataset.price = priceMatch[1];
+                opt.dataset.name = opt.textContent.split('-')[1]?.trim() || opt.value;
+                opt.dataset.desc = "Prestation de service sur les cellules filtrantes.";
+            });
+        }
+    }
+
+    function applyConfig(data) {
+        if (!data) return;
+        appConfigData = data;
+
+        const c = data.costs;
+        if (c) {
+            const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+            setVal('cost-unit-buy', c.cell_unit_buy_ht);
+            setVal('cost-shipping', c.shipping_fixed_ht);
+            setVal('cost-install-unit', c.install_unit_ht);
+            setVal('cost-travel', c.travel_fixed_ht);
+            setVal('cost-collect-freq', c.collect_frequency_per_year);
+            setVal('cost-waste-fixed', c.waste_fixed_cost_ht);
+            setVal('cost-waste-unit', c.waste_unit_cost_ht);
+            setVal('cost-tva', c.tva_pct);
+        }
+
+        runCosts();
+    }
+
+    function renderPlansPage() {
+        if (!appConfigData || !appConfigData.subscriptions) return;
+
+        // Populate recommendation
+        const estCells = document.getElementById('est-cells');
+        const planRecVal = document.getElementById('plans-rec-val');
+        const planRecRange = document.getElementById('plans-rec-range');
+        if (estCells) {
+            const match = estCells.textContent.match(/(\d+)/);
+            if (match && planRecVal) {
+                const baseRec = parseInt(match[1]) || 1;
+                planRecVal.textContent = baseRec;
+                if (planRecRange) {
+                    const min = Math.max(1, Math.floor(baseRec * 0.8));
+                    const max = Math.ceil(baseRec * 1.25);
+                    planRecRange.textContent = `(Marge selon courant : de ${min} à ${max} cellules)`;
+                }
+            }
+        }
+
+        const grid = document.getElementById('plans-grid');
+        if (!grid) return;
+        grid.innerHTML = '';
+
+        appConfigData.subscriptions.forEach(sub => {
+            const card = document.createElement('div');
+            const isSelected = selectedPlanId === sub.id;
+            const isPremium = sub.id === 'premium';
+
+            card.className = `plan-card ${isPremium ? 'premium' : ''} ${isSelected ? 'selected' : ''}`;
+
+            let featuresHTML = '';
+            if (sub.id === 'basic') {
+                featuresHTML = `
+                    <li>✅ Fourniture de nouvelles cellules</li>
+                    <li>✅ Frais de livraison inclus</li>
+                    <li class="disabled">❌ Aucune pose / main d'œuvre</li>
+                    <li class="disabled">❌ Vous gérez le traitement des déchets</li>
+                `;
+            } else if (sub.id === 'comfort') {
+                featuresHTML = `
+                    <li>✅ Fourniture de nouvelles cellules</li>
+                    <li>✅ Frais de livraison inclus</li>
+                    <li>✅ Déplacement et pose des cellules</li>
+                    <li class="disabled">❌ Traitement des déchets à votre charge</li>
+                `;
+            } else {
+                featuresHTML = `
+                    <li>✅ Fourniture des cellules avec livraison</li>
+                    <li>✅ Remplacement périodique complet</li>
+                    <li>✅ Collecte sur site</li>
+                    <li>✅ Recyclage / traitement des hydrocarbures</li>
+                `;
+            }
+
+            let ribbon = isPremium ? `<div class="plan-ribbon">Recommandé</div>` : '';
+
+            card.innerHTML = `
+                ${ribbon}
+                <h3 class="plan-title">${sub.name}</h3>
+                <div class="plan-price">
+                    <span class="currency">€</span><span class="amount">${sub.price_per_cell_per_month}</span><span class="period">/cellule/mois</span>
+                </div>
+                <p class="plan-desc">${sub.description}</p>
+                <div class="plan-features">${featuresHTML}</div>
+                <div style="flex-grow:1;"></div>
+                <button class="btn-primary plan-select-btn" data-id="${sub.id}">
+                    ${isSelected ? '✓ Formule Active' : 'Choisir cette formule'}
+                </button>
+            `;
+            grid.appendChild(card);
+        });
+
+        document.querySelectorAll('.plan-select-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                selectedPlanId = e.target.dataset.id;
+                setActivePage('costs');
+            });
+        });
+    }
+
+    // Connect button to change plan from costs page:
+    const btnChangePlan = document.getElementById('btn-change-plan');
+    if (btnChangePlan) {
+        btnChangePlan.addEventListener('click', () => {
+            setActivePage('plans');
+        });
+    }
+
+    function runCosts() {
+        // Auto-sync cell count from estimation if available
+        const estCells = document.getElementById('est-cells');
+        const costNumCells = document.getElementById('cost-num-cells');
+        if (estCells && costNumCells && !costNumCells._manuallyEdited) {
+            const match = estCells.textContent.match(/(\d+)/);
+            if (match) costNumCells.value = match[1];
+        }
+
+        const n = parseInt(document.getElementById('cost-num-cells')?.value) || 0;
+        const unitBuy = parseFloat(document.getElementById('cost-unit-buy')?.value) || 0;
+        const shipping = parseFloat(document.getElementById('cost-shipping')?.value) || 0;
+        const installU = parseFloat(document.getElementById('cost-install-unit')?.value) || 0;
+        const travel = parseFloat(document.getElementById('cost-travel')?.value) || 0;
+        const collectFreq = parseInt(document.getElementById('cost-collect-freq')?.value) || 1;
+
+        const wasteFixed = parseFloat(document.getElementById('cost-waste-fixed')?.value) || 0;
+        const wasteUnit = parseFloat(document.getElementById('cost-waste-unit')?.value) || 0;
+        const tva = (parseFloat(document.getElementById('cost-tva')?.value) || 20) / 100;
+
+        let selectedOpt = appConfigData?.subscriptions?.find(s => s.id === selectedPlanId);
+        // Fallback
+        if (!selectedOpt) {
+            selectedOpt = { id: 'premium', name: 'Clé en main (Tout inclus)', price_per_cell_per_month: 20, description: 'Service intégral' };
+        }
+
+        const monthlySubPrice = selectedOpt.price_per_cell_per_month;
+        const subName = selectedOpt.name;
+        const subDesc = selectedOpt.description;
+        const isBasic = selectedPlanId === 'basic';
+        const isComfort = selectedPlanId === 'comfort';
+        const isPremium = selectedPlanId === 'premium';
+
+        // Mettre à jour l'UI display du plan actif
+        const disp = document.getElementById('active-plan-display');
+        if (disp) disp.textContent = subName;
+        const costSubDesc = document.getElementById('cost-sub-desc');
+        if (costSubDesc) costSubDesc.textContent = subDesc;
+
+        // ── Coûts de revient 1ère année ───────────────────────────────
+        // Pour la première année, il faut:
+        // - Initial: (n * unitBuy) + shipping. Si confort/premium: on ajoute l'installation et travel
+        // - Replacements multiples dans l'année (collectFreq - 1x). On suppose que la pose initiale compte pour 1.
+        // Wait, it's easier to say: Year 1 = 1x initial setup + collectFreq replacements?
+        // Let's assume collectFreq is the total number of interventions needed throughout the year. So if freq=4, we do the initial + 3 replacements.
+
+        const totalPassagesYear1 = Math.max(1, collectFreq);
+        const cellPurchasesYear1 = n * unitBuy * totalPassagesYear1;
+        const shippingYear1 = shipping * totalPassagesYear1;
+
+        // Basic: pas de main d'oeuvre, pas de déplacement pour nous, pas de déchet
+        let travelYear1 = 0;
+        let installYear1 = 0;
+        let wasteYear1 = 0;
+
+        if (isComfort || isPremium) {
+            travelYear1 = travel * totalPassagesYear1;
+            installYear1 = (n * installU) * totalPassagesYear1;
+        }
+
+        if (isPremium) {
+            // Waste is generated ONLY when cells are replaced.
+            // Year 1, the first setup doesn't generate waste, only the subsequent (totalPassagesYear1 - 1) don't they? 
+            // Or maybe the end of year 1 triggers the waste collection? Let's just say waste happens every replacement passage.
+            const replacementPassages = Math.max(0, totalPassagesYear1 - 1);
+            wasteYear1 = replacementPassages * (wasteFixed + (n * wasteUnit));
+        }
+
+        const cdrTotal = cellPurchasesYear1 + shippingYear1 + installYear1 + travelYear1 + wasteYear1;
+
+        // ── Prix de vente (Facturation Client) ────────────────────────
+        const sellMonth = n * monthlySubPrice;
+        const sellYear = sellMonth * 12;
+        const totalHT = sellYear;
+        const totalTTC = totalHT * (1 + tva);
+
+        // ── Marge & Rentabilité 1ère année ────────────────────────────
+        const margin = totalHT - cdrTotal;
+        const marginPct = totalHT > 0 ? (margin / totalHT * 100) : 0;
+
+        // ── Années suivantes ──────────────────────────────────────────
+        // Year 2+ : frequency of replacements
+        const recPassages = collectFreq;
+        const recCells = n * unitBuy * recPassages;
+        const recShipping = shipping * recPassages;
+
+        let recTravel = 0, recInstall = 0, recWaste = 0;
+        if (isComfort || isPremium) {
+            recTravel = travel * recPassages;
+            recInstall = (n * installU) * recPassages;
+        }
+        if (isPremium) {
+            recWaste = recPassages * (wasteFixed + (n * wasteUnit));
+        }
+
+        const recurringCost = recCells + recShipping + recTravel + recInstall + recWaste;
+        const recurringRev = sellYear;
+        const recurringMargin = recurringRev - recurringCost;
+
+        // ── Affichage ─────────────────────────────────────────────────
+        const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+        set('cost-r-buy', fmt(cellPurchasesYear1));
+        set('cost-r-shipping', fmt(shippingYear1));
+        set('cost-r-install', fmt(installYear1));
+        set('cost-r-travel', fmt(travelYear1));
+        set('cost-r-cdr', fmt(cdrTotal));
+
+        set('cost-r-sell-month', fmt(sellMonth) + ' / mois');
+        set('cost-r-sell-year', fmt(sellYear) + ' / an');
+        set('cost-r-total-ht', fmt(totalHT));
+        set('cost-r-total-ttc', fmt(totalTTC));
+        set('cost-r-margin', fmt(margin));
+
+        const margEl = document.getElementById('cost-r-margin-pct');
+        if (margEl) {
+            margEl.textContent = marginPct.toFixed(1) + ' %';
+            margEl.style.color = marginPct >= 30 ? '#27ae60' : marginPct >= 15 ? '#e67e22' : '#e74c3c';
+        }
+        set('cost-r-recurring', fmt(recurringMargin) + ' / an');
+
+        // Breakdown detail
+        const bd = document.getElementById('cost-breakdown');
+        if (bd) {
+            bd.innerHTML = '';
+            const addRow = (icon, name, detail, highlight = false) => {
+                const row = document.createElement('div');
+                row.className = 'est-breakdown-row' + (highlight ? ' cost-highlight-row' : '');
+                row.innerHTML = `<span class="est-breakdown-name">${icon} ${name}</span><span class="est-breakdown-detail">${detail}</span>`;
+                bd.appendChild(row);
+            };
+            const addSep = (t) => {
+                const el = document.createElement('div');
+                el.className = 'est-approach-title';
+                el.style.marginTop = '10px';
+                el.textContent = t;
+                bd.appendChild(el);
+            };
+
+            addSep('📉 Coûts Internes 1ère Année');
+            addRow('📦', 'Fourniture & Livraisons', `${totalPassagesYear1} livraisons = ${fmt(cellPurchasesYear1 + shippingYear1)}`);
+            if (isComfort || isPremium) {
+                addRow('🔧', 'Pose & Déplacements', `${totalPassagesYear1} passages = ${fmt(installYear1 + travelYear1)}`);
+            }
+            if (isPremium) {
+                addRow('🗑️', 'Collecte & Traitement', `${Math.max(0, totalPassagesYear1 - 1)} enlèvements = ${fmt(wasteYear1)}`);
+            }
+            addRow('🧾', 'Coût total estimé 1ère année', `${fmt(cdrTotal)}`, true);
+
+            addSep('📈 Revenus Client');
+            addRow('💎', 'Facturation Annuelle', `${n} cel. × ${fmt(monthlySubPrice)} × 12 mois = ${fmt(sellYear)}`);
+
+            addSep('💡 Rentabilité 1ère Année');
+            addRow('📊', 'Marge brute', `${fmt(sellYear)} - ${fmt(cdrTotal)} = ${fmt(margin)}`);
+            addRow('%', 'Taux de marge brute', `${marginPct.toFixed(1)}%`, marginPct >= 30);
+
+            addSep('🔄 Rentabilité Années Suivantes');
+            addRow('💰', 'Revenu Annuel', `${fmt(recurringRev)}`);
+            addRow('🛠️', 'Coûts Récurrents (Fournitures' + (isPremium ? ", Main d'œuvre, Déchets" : "") + ')', `${fmt(recurringCost)}`);
+            addRow('🏆', 'Marge Brute Récurrente', `${fmt(recurringMargin)} par an`, true);
+        }
+
+        // Save for quote use
+        _lastCosts = {
+            n, unitBuy, shipping, installU, travel,
+            collectFreq, wasteFixed, wasteUnit, tva,
+            monthlySubPrice, subName, subDesc,
+            cdrTotal, sellMonth, sellYear,
+            totalHT, totalTTC, margin, marginPct, recurringMargin,
+            projectName: document.getElementById('cost-project-name')?.value || ''
+        };
+    }
+
+    // Wire up all cost inputs to auto-recalc
+    ['cost-num-cells', 'cost-unit-buy', 'cost-shipping', 'cost-install-unit',
+        'cost-travel', 'cost-collect-freq', 'cost-waste-fixed', 'cost-waste-unit',
+        'cost-tva'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', runCosts);
+                if (id === 'cost-num-cells') {
+                    el.addEventListener('input', () => { el._manuallyEdited = true; });
+                }
+            }
+        });
+
+    // "Générer le devis" button
+    const btnCopyToQuote = document.getElementById('btn-copy-to-quote');
+    if (btnCopyToQuote) btnCopyToQuote.addEventListener('click', () => setActivePage('quote'));
+
+    // Print button
+    const btnPrintQuote = document.getElementById('btn-print-quote');
+    if (btnPrintQuote) btnPrintQuote.addEventListener('click', () => window.print());
+
+    // ═══════════════════════════════════════════════════════════════════
+    // QUOTE PAGE LOGIC
+    // ═══════════════════════════════════════════════════════════════════
+
+    function renderQuote() {
+        // Ensure costs are computed first
+        runCosts();
+        const c = _lastCosts;
+
+        // Date
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+        const el = (id) => document.getElementById(id);
+
+        const badge = el('quote-date-badge');
+        if (badge) badge.textContent = dateStr;
+        const legalDate = el('quote-legal-date');
+        if (legalDate) legalDate.textContent = `Devis émis le ${dateStr}.`;
+
+        // Hero header
+        const projectName = c.projectName || 'Port';
+        if (el('quote-client-project')) el('quote-client-project').textContent = `${projectName} — Cellules filtrantes`;
+        if (el('quote-subtitle')) el('quote-subtitle').textContent = `Proposition commerciale — ${projectName}`;
+
+        const fmtQ = (n) => Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+
+        if (el('quote-h-cells')) el('quote-h-cells').textContent = c.n;
+        if (el('quote-h-ttc')) el('quote-h-ttc').textContent = fmtQ(c.totalTTC);
+        if (el('quote-h-annual')) el('quote-h-annual').textContent = fmtQ(c.totalTTC); // Total year 1 is the same as recurring now, since it's subscription-based
+
+        // Table body
+        const tbody = el('quote-table-body');
+        const tfoot = el('quote-table-foot');
+        if (!tbody) return;
+
+        const rows = [
+            {
+                label: `Abonnement : ${c.subName}`,
+                desc: c.subDesc,
+                qty: c.n,
+                puHT: c.monthlySubPrice * 12,
+                totalHT: c.sellYear,
+                isRecurring: true
+            }
+        ];
+
+        tbody.innerHTML = rows.filter(r => !r.isIncluded).map(r => `
+            <tr class="${r.isRecurring ? 'quote-row-recurring' : ''}">
+                <td>
+                    <div class="quote-row-label">${r.label}${r.isRecurring ? ' <span class="quote-recurring-badge">engagement 1 an</span>' : ''}</div>
+                    <div class="quote-row-desc">${r.desc}</div>
+                </td>
+                <td class="quote-td-num">${r.qty}</td>
+                <td class="quote-td-num">${r.qty > 0 && r.puHT > 0 ? fmtQ(r.puHT) + ' / an' : '—'}</td>
+                <td class="quote-td-num quote-td-total">${fmtQ(r.totalHT)}</td>
+            </tr>
+        `).join('');
+
+        const tvaAmount = c.totalHT * c.tva;
+        tfoot.innerHTML = `
+            <tr class="quote-foot-sub">
+                <td colspan="3">Total HT annuel</td>
+                <td class="quote-td-num">${fmtQ(c.totalHT)}</td>
+            </tr>
+            <tr class="quote-foot-sub">
+                <td colspan="3">TVA (${(c.tva * 100).toFixed(0)}%)</td>
+                <td class="quote-td-num">${fmtQ(tvaAmount)}</td>
+            </tr>
+            <tr class="quote-foot-total">
+                <td colspan="3">TOTAL TTC (Mensuel)</td>
+                <td class="quote-td-num">${fmtQ(c.totalTTC / 12)} / mois</td>
+            </tr>
+            <tr class="quote-foot-note">
+                <td colspan="4">⟳ Coût total annuel TTC : ${fmtQ(c.totalTTC)} / an</td>
+            </tr>
+        `;
     }
 
 });
