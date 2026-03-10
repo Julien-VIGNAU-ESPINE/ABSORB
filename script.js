@@ -2519,7 +2519,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Generate source areas per-zone so each zone can have its own intensity
         zones.forEach(zone => {
             if (zone.type !== 'polluante') return;
-            const zoneIntensity = zone.pollutionIntensity !== undefined ? zone.pollutionIntensity : 0.1;
+            const zoneIntensity = zone.pollutionIntensity !== undefined ? zone.pollutionIntensity : 1.2;
 
             offCtx.resetTransform();
             offCtx.clearRect(0, 0, cols, rows);
@@ -2541,7 +2541,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const zoneSourceData = offCtx.getImageData(0, 0, cols, rows).data;
             for (let i = 0; i < numCells; i++) {
                 if (zoneSourceData[i * 4] > 128 && obstacles[i] === 0) {
-                    density[i] = Math.min(1.0, density[i] + zoneIntensity);
+                    density[i] = Math.min(1.2, density[i] + zoneIntensity);
                 }
             }
         });
@@ -2624,8 +2624,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : 50) / 50.0;
 
-                            vxField[i] = (gradX * 0.8 + bDX * 5.0 * powerScale + turbulentX * 1.2) * waveStrength;
-                            vyField[i] = (gradY * 0.8 + bDY * 5.0 * powerScale + turbulentY * 1.2) * waveStrength;
+                            // Make pollution stick to the boat: 
+                            // Strong drag along boat path (bDX * 18.0), reduced outward push (gradX * 0.2), and slight suction (-gradX * 0.4) towards the boat's center path could be used.
+                            // Let's use a strong forward pull and reduced outward push so it stays on the boat.
+                            let pullFactor = 20.0;
+                            let outwardPush = 0.2; // Reduced from 0.8 to keep it close
+
+                            vxField[i] = (gradX * outwardPush + bDX * pullFactor * powerScale + turbulentX * 1.2) * waveStrength;
+                            vyField[i] = (gradY * outwardPush + bDY * pullFactor * powerScale + turbulentY * 1.2) * waveStrength;
                         }
                     }
                 }
@@ -2665,7 +2671,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
 
-                let speedScale = 5.0; // Stronger push from waves
+                let speedScale = 8.0; // Stronger push from waves (increased from 5.0)
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
 
@@ -2703,14 +2709,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 let diffuse = sumD / countD;
 
-                // Mix rate: wave velocity + strong 10% baseline diffusion for visible spread
-                let mixRate = Math.min(1.0, vMag * 1.0 + 0.10);
+                // Mix rate: wave velocity + strong diffusion for visible spread
+                // Reduced baseline diffusion slightly to 9% to rein in distance
+                let mixRate = Math.min(1.0, vMag * 1.0 + 0.09);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
-                // Pollution no longer evaporates (continuous simulation)
-                // finalD *= 0.998; 
+                // Pollution decay/evaporation (Very slight, so it doesn't flood the whole map forever)
+                finalD *= 0.999;
 
-                if (finalD < 0.005) finalD = 0;
+                // Allow pollution to spread very wide before clipping to 0
+                if (finalD < 0.0001) finalD = 0;
 
                 // Source-zone resistance: cells are far less effective directly on a pollution source
                 // sourceMask[i] = 1.0 means "full source", 0.0 means "open water"
@@ -2730,11 +2738,19 @@ document.addEventListener('DOMContentLoaded', () => {
                         const dx = cx - cell.x;
                         const dy = cy - cell.y;
                         const dSq = dx * dx + dy * dy;
-                        if (dSq < cell.radius * cell.radius) {
+
+                        // Dynamic radius: small on intense zones, large on low-intensity zones
+                        // Pure water (finalD close to 0) => multiplier ~1.5 (radius +50%)
+                        // Heavy pollution (finalD ~1.0) => multiplier ~0.5 (radius -50%)
+                        const dynMultiplier = 1.5 - Math.min(1.0, finalD * 2.0);
+                        const effRadius = cell.radius * dynMultiplier;
+
+                        if (dSq < effRadius * effRadius) {
                             const dist = Math.sqrt(dSq);
-                            // Base efficiency 97%, reduced to ~10% inside pollution sources
-                            const maxAbsorb = 0.97 * (1.0 - sourceResistance * 0.88);
-                            const effect = 1.0 - (1.0 - dist / cell.radius) * maxAbsorb;
+                            // Base efficiency moderate (20%), reduced by source resistance AND current pollution density
+                            const densityPenalty = Math.min(0.95, finalD * 1.5); // Up to 95% penalty
+                            const cellEfficiency = 0.20 * (1.0 - sourceResistance * 0.95) * (1.0 - densityPenalty);
+                            const effect = 1.0 - (1.0 - dist / effRadius) * cellEfficiency;
                             finalD *= effect;
                         }
                     }
@@ -2772,16 +2788,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 const d = displayDensity[i];
                 if (d <= 0 || obstacles[i] !== 0) continue;
 
+                // Apply a power factor for visual intensity
                 let val = d / Math.max(0.3, displayMax);
+                val = Math.pow(val, 0.85); // More linear curve: fades out much more naturally 
                 val = Math.min(1.0, val);
 
                 {
-                    const hue = 20 + ((1.0 - val) * 160);
-                    const sat = 0.95;
-                    const lig = 0.45 + val * 0.1;
+                    // Gradient fades from red (20) to orange, yellow, and finally a weak green/cyan (140)
+                    const hue = 20 + ((1.0 - val) * 120);
+                    const sat = val < 0.2 ? 0.7 : 1.0;  // Lower saturation on the weak tail
+                    const lig = val < 0.2 ? 0.6 : 0.50; // Keep luminance balanced
                     const rgb = hslToRgb(hue / 360, sat, lig);
 
-                    let alpha = Math.min(1.0, 0.3 + val * 0.7);
+                    // Fade alpha heavily on weak pollution
+                    let alpha = Math.max(0, Math.min(1.0, val * 2.0));
 
                     heatImgData.data[i * 4] = rgb[0];
                     heatImgData.data[i * 4 + 1] = rgb[1];
@@ -2810,7 +2830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate impacted coastlines
         const impactImgData = offCtx.createImageData(cols, rows);
         let hasImpact = false;
-        const impactThreshold = 0.01; // Lowered threshold to pick up thin trails
+        const impactThreshold = 0.001; // Lowered to pick up the very faint blue trails on coasts
         const checkRadius = 2; // How far to look for pollution
 
         if (!pollutionState.impactMask || pollutionState.impactMask.length !== numCells) {
@@ -2848,9 +2868,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const currentIntensity = isPersistent ? pollutionState.cumulativeImpactMask[i] : maxLocalDensity;
 
                     if (currentIntensity > 0) {
-                        // Base heat value from pollution intensity (clamp min 0.3 so always warm without cells)
+                        // Base heat value from pollution intensity
                         let val = currentIntensity / Math.max(0.3, maxDensity);
-                        val = Math.max(0.3, Math.min(1.0, val));
+                        val = Math.min(1.0, val); // REMOVED the 0.3 min clamp so we can reach the blue/green hues
 
                         // Apply cooling from nearby cells only if cells toggle is active
                         const cbCellsAct = document.getElementById('cb-cells-active');
@@ -2863,8 +2883,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const dist = Math.hypot(cx - cell.x, cy - cell.y);
                                 const protectRadius = cell.radius * 3.5;
                                 if (dist < protectRadius) {
+                                    // Cell strength degrades sharply if the initial pollution (val) is very high
+                                    // A val of 1.0 (pure red) reduces the cell's coastal cooling power by 90%
                                     const strength = 1.0 - dist / protectRadius;
-                                    val *= (1.0 - strength * 0.95);
+                                    const valPenalty = Math.max(0, val - 0.3) / 0.7; // Scale 0 to 1 based on how red it is
+                                    const adjustedStrength = strength * (1.0 - valPenalty * 0.90);
+
+                                    val *= (1.0 - adjustedStrength * 0.95);
                                 }
                             }
                         }
@@ -2876,13 +2901,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         if (cleanModeHidden && val < coolingThreshold) {
                             // Hidden mode: if cell coverage is strong enough, coast pixel disappears
-                            // (leave impactImgData at 0 = transparent)
                         } else {
-                            // Blue mode: use a lighter, less saturated blue at low val
-                            // Clamp hue to max 200 for a softer cyan-blue instead of deep navy
-                            const hue = Math.min(200, 20 + ((1.0 - val) * 200));
-                            const sat = val < 0.2 ? 0.5 + val * 2 : 0.95; // desaturate when very cool
-                            const lig = val < 0.2 ? 0.65 + (0.2 - val) * 0.5 : 0.45 + val * 0.1; // lighter when cool
+                            const colorVal = Math.pow(val, 1.2);
+
+                            // Map hue with piecewise logic focusing heavily on Red, and leaving room for Blue
+                            // Piecewise logic: RED, EXTREMELY expanded ORANGE/YELLOW, Green, then TURQUOISE tail
+                            let hue;
+                            if (colorVal >= 0.85) {
+                                // 0.85 to 1.0 (Only top 15%): Pure Red (20) to Orange-Red (35)
+                                hue = 20 + ((1.0 - colorVal) / 0.15) * 15;
+                            } else if (colorVal >= 0.05) {
+                                // 0.05 to 0.85 (Massive 80% band!): Orange-Red (35) through YELLOW (65) to Lime (100)
+                                // This is now the absolute dominant color range on the coast
+                                hue = 35 + ((0.85 - colorVal) / 0.80) * 65;
+                            } else {
+                                // 0.0 to 0.05: Lime (100) to Turquoise (185)
+                                hue = 100 + ((0.05 - colorVal) / 0.05) * 85;
+                            }
+                            hue = Math.min(185, Math.max(20, hue));
+
+                            // Bright saturation and lightness to make the blue/cyan pop nicely
+                            const sat = val < 0.3 ? 0.9 : 1.0;
+                            const lig = val < 0.3 ? 0.60 : 0.45 + val * 0.1;
+
                             const rgb = hslToRgb(hue / 360, sat, Math.min(0.85, lig));
                             impactImgData.data[i * 4] = rgb[0];
                             impactImgData.data[i * 4 + 1] = rgb[1];
@@ -3048,13 +3089,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Taux de remplissage résultant = V / (C × capacité)
         // Si taux < 20% : on affiche un avertissement de sous-dimensionnement
         // ═══════════════════════════════════════════════════════════
-        const finalCells = Math.max(cellsFromVolume, cellsFromSpacing || cellsFromVolume);
+        const rawFinalCells = Math.max(cellsFromVolume, cellsFromSpacing || cellsFromVolume);
+        const finalCells = Math.ceil(rawFinalCells / 1.5);
         // Min = purely volumetric (no spatial constraint)
         const minCells = cellsFromVolume > 0 ? cellsFromVolume : (cellsFromSpacing > 0 ? Math.ceil(cellsFromSpacing * 0.5) : 1);
-        // Max = coverage at 3m minimum spacing (realistic upper bound)
-        const maxCells = cellsFromCoast > 0
-            ? Math.ceil(coastLengthM / 3)  // 1 cell every 3m
-            : Math.ceil(finalCells * 1.5);
+        // Max = 2 fois la quantité recommandée ("ce qu'il faut pour la surface")
+        const maxCells = finalCells * 2;
         const barrierLengthM = finalCells;
         const fillRate = finalCells > 0 && vTotalPerYear > 0
             ? Math.round((vTotalPerYear / (finalCells * cellCapacityL)) * 100)
