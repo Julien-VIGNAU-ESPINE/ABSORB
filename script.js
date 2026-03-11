@@ -2589,7 +2589,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function runPollutionSimulation() {
-        const cellSize = 6;
+        const cellSize = PHYSICS_CONFIG.grid_scale;
         const cols = Math.ceil(canvas.width / cellSize);
         const rows = Math.ceil(canvas.height / cellSize);
         const numCells = cols * rows;
@@ -2757,16 +2757,14 @@ document.addEventListener('DOMContentLoaded', () => {
                             }
 
                             // turbulence
-                            let turbulentX = -gradY * Math.sin(d * 0.15 + simulationTime * 0.3);
-                            let turbulentY = gradX * Math.cos(d * 0.15 + simulationTime * 0.3);
+                            let turbulentX = -gradY * Math.sin(d * PHYSICS_CONFIG.waves.turbulence_frequency + simulationTime * PHYSICS_CONFIG.waves.turbulence_speed);
+                            let turbulentY = gradX * Math.cos(d * PHYSICS_CONFIG.waves.turbulence_frequency + simulationTime * PHYSICS_CONFIG.waves.turbulence_speed);
 
-                            let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : 50) / 50.0;
+                            let powerScale = (wakePowerInput ? parseInt(wakePowerInput.value) : PHYSICS_CONFIG.waves.default_power) / 50.0;
 
                             // Make pollution stick to the boat: 
-                            // Strong drag along boat path (bDX * 18.0), reduced outward push (gradX * 0.2), and slight suction (-gradX * 0.4) towards the boat's center path could be used.
-                            // Let's use a strong forward pull and reduced outward push so it stays on the boat.
-                            let pullFactor = 20.0;
-                            let outwardPush = 0.2; // Reduced from 0.8 to keep it close
+                            let pullFactor = PHYSICS_CONFIG.boats.pull_factor;
+                            let outwardPush = PHYSICS_CONFIG.boats.outward_push;
 
                             vxField[i] = (gradX * outwardPush + bDX * pullFactor * powerScale + turbulentX * 1.2) * waveStrength;
                             vyField[i] = (gradY * outwardPush + bDY * pullFactor * powerScale + turbulentY * 1.2) * waveStrength;
@@ -2812,7 +2810,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
 
-                let speedScale = 8.0;
+                let speedScale = PHYSICS_CONFIG.pollution.speed_scale;
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
 
@@ -2849,10 +2847,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 let diffuse = sumD / countD;
 
-                let mixRate = Math.min(1.0, vMag * 1.0 + 0.08);
+                let mixRate = Math.min(1.0, vMag * 1.0 + PHYSICS_CONFIG.pollution.diffusion_mix);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
-                finalD *= 0.999;
+                finalD *= PHYSICS_CONFIG.pollution.decay_rate;
                 if (finalD < 0.0001) finalD = 0;
 
                 const sourceResistance = pollutionState.sourceMask ? pollutionState.sourceMask[i] : 0;
@@ -2876,13 +2874,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         const dy = cy - cell.y;
                         const dSq = dx * dx + dy * dy;
 
-                        const dynMultiplier = 1.5 - Math.min(1.0, finalD * 2.0);
+                        const dynMultiplier = PHYSICS_CONFIG.cells.dynamic_strength_multiplier - Math.min(1.0, finalD * 2.0);
                         const effRadius = cell.radius * dynMultiplier;
 
                         if (dSq < effRadius * effRadius) {
                             const dist = Math.sqrt(dSq);
                             const densityPenalty = Math.min(0.95, finalD * 1.5);
-                            const cellEfficiency = 0.20 * (1.0 - sourceResistance * 0.95) * (1.0 - densityPenalty);
+                            const cellEfficiency = PHYSICS_CONFIG.cells.base_efficiency * (1.0 - sourceResistance * PHYSICS_CONFIG.cells.source_resistance_penalty) * (1.0 - densityPenalty);
                             const effect = 1.0 - (1.0 - dist / effRadius) * cellEfficiency;
                             finalD *= effect;
                         }
@@ -2969,8 +2967,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate impacted coastlines
         const impactImgData = offCtx.createImageData(cols, rows);
         let hasImpact = false;
-        const impactThreshold = 0.015; // Balanced threshold between 0.001 and 0.04
-        const checkRadius = 2; // How far to look for pollution
+        const impactThreshold = PHYSICS_CONFIG.pollution.impact_threshold;
+        const checkRadius = PHYSICS_CONFIG.pollution.check_radius_cells; // How far to look for pollution
 
         if (!pollutionState.impactMask || pollutionState.impactMask.length !== numCells) {
             pollutionState.impactMask = new Float32Array(numCells).fill(0);
@@ -3416,26 +3414,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Store last computed costs so the quote can read them
     let _lastCosts = {};
 
-    let appConfig = null;
+    let appConfig = BUSINESS_CONFIG;
     let selectedPlanId = 'premium';
-    let appConfigData = null;
+    let appConfigData = BUSINESS_CONFIG;
 
-    // Fetch configuration
-    if (window.ABSORB_CONFIG) {
-        appConfig = window.ABSORB_CONFIG;
-        applyConfig(appConfig);
-    } else {
-        console.warn("No ABSORB_CONFIG found. Using default values.");
-        // Default setup for select data attributes
-        const subSelect = document.getElementById('cost-sub-plan');
-        if (subSelect && subSelect.options.length > 0) {
-            Array.from(subSelect.options).forEach(opt => {
-                const priceMatch = opt.textContent.match(/(\d+)€/);
-                if (priceMatch) opt.dataset.price = priceMatch[1];
-                opt.dataset.name = opt.textContent.split('-')[1]?.trim() || opt.value;
-                opt.dataset.desc = "Prestation de service sur les cellules filtrantes.";
-            });
-        }
+    applyConfig(BUSINESS_CONFIG);
+    // Default setup for select data attributes
+    const subSelect = document.getElementById('cost-sub-plan');
+    if (subSelect && subSelect.options.length > 0) {
+        Array.from(subSelect.options).forEach(opt => {
+            const priceMatch = opt.textContent.match(/(\d+)€/);
+            if (priceMatch) opt.dataset.price = priceMatch[1];
+            opt.dataset.name = opt.textContent.split('-')[1]?.trim() || opt.value;
+            opt.dataset.desc = "Prestation de service sur les cellules filtrantes.";
+        });
     }
 
     function applyConfig(data) {
@@ -3453,6 +3445,16 @@ document.addEventListener('DOMContentLoaded', () => {
             setVal('cost-waste-fixed', c.waste_fixed_cost_ht);
             setVal('cost-waste-unit', c.waste_unit_cost_ht);
             setVal('cost-tva', c.tva_pct);
+
+            // Setup costs
+            if (c.setup) {
+                setVal('cost-expert-buy', c.setup.expert.buy);
+                setVal('cost-expert-sell', c.setup.expert.sell);
+                setVal('cost-setup-buy', c.setup.install.buy);
+                setVal('cost-setup-sell', c.setup.install.sell);
+                setVal('cost-training-buy', c.setup.training.buy);
+                setVal('cost-training-sell', c.setup.training.sell);
+            }
         }
 
         runCosts();
