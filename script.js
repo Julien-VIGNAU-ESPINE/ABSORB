@@ -2710,8 +2710,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 let diffuse = sumD / countD;
 
                 // Mix rate: wave velocity + strong diffusion for visible spread
-                // Reduced baseline diffusion slightly to 9% to rein in distance
-                let mixRate = Math.min(1.0, vMag * 1.0 + 0.09);
+                // Balanced baseline diffusion to 8%
+                let mixRate = Math.min(1.0, vMag * 1.0 + 0.08);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
                 // Pollution decay/evaporation (Very slight, so it doesn't flood the whole map forever)
@@ -2830,7 +2830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate impacted coastlines
         const impactImgData = offCtx.createImageData(cols, rows);
         let hasImpact = false;
-        const impactThreshold = 0.001; // Lowered to pick up the very faint blue trails on coasts
+        const impactThreshold = 0.015; // Balanced threshold between 0.001 and 0.04
         const checkRadius = 2; // How far to look for pollution
 
         if (!pollutionState.impactMask || pollutionState.impactMask.length !== numCells) {
