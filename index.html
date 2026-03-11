@@ -116,9 +116,19 @@
                             <input type="checkbox" id="cb-cumulative-heatmap">
                         </div>
                         <div class="slider-group"
-                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px; border-top: 1px dashed var(--clr-border); padding-top: 8px;">
-                            <label for="cb-cells-active" style="margin-bottom: 0;">🔲 Cellules actives</label>
-                            <input type="checkbox" id="cb-cells-active" checked>
+                            style="flex-direction: column; align-items: stretch; margin-top: 8px; border-top: 1px dashed var(--clr-border); padding-top: 8px;">
+                            <label
+                                style="font-size: 0.8rem; color: var(--clr-text-muted); margin-bottom: 8px;">Traitement
+                                par cellules :</label>
+                            <div class="tri-state-toggle"
+                                style="display: flex; background: var(--clr-surface); border-radius: 8px; padding: 2px; border: 1px solid var(--clr-border);">
+                                <button id="btn-cell-off" class="state-btn"
+                                    style="flex: 1; border: none; background: transparent; color: var(--clr-text-muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">Éteint</button>
+                                <button id="btn-cell-blue" class="state-btn active"
+                                    style="flex: 1; border: none; background: var(--clr-primary); color: white; padding: 6px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">Bleu</button>
+                                <button id="btn-cell-clean" class="state-btn"
+                                    style="flex: 1; border: none; background: transparent; color: var(--clr-text-muted); padding: 6px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s;">Propre</button>
+                            </div>
                         </div>
                     </div>
 
@@ -137,18 +147,6 @@
                             style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
                             <label for="cb-coast-heatmap" style="margin-bottom: 0;">Côtes en Heatmap</label>
                             <input type="checkbox" id="cb-coast-heatmap">
-                        </div>
-                        <div style="margin-top: 10px; border-top: 1px dashed var(--clr-border); padding-top: 8px;">
-                            <label
-                                style="font-size: 0.8rem; color: var(--clr-text-muted); display:block; margin-bottom: 5px;">Rendu
-                                du nettoyage par cellules :</label>
-                            <div style="display: flex; gap: 6px;">
-                                <button id="btn-clean-mode-blue" class="btn-secondary btn-small active"
-                                    style="flex:1; font-size:0.75rem; padding: 4px; border: 2px solid #3498db; color:#3498db;">🔵
-                                    Bleu</button>
-                                <button id="btn-clean-mode-hidden" class="btn-secondary btn-small"
-                                    style="flex:1; font-size:0.75rem; padding: 4px;">✨ Propre</button>
-                            </div>
                         </div>
                     </div>
                 </div>

@@ -113,9 +113,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Toolbar Setup ---
     toolBtns.forEach(btn => {
         btn.addEventListener('click', () => {
+            const tool = btn.getAttribute('data-tool');
+            if (!tool) return; // Skip for action buttons like play/calc
             toolBtns.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            setTool(btn.getAttribute('data-tool'));
+            setTool(tool);
         });
     });
 
@@ -276,12 +278,19 @@ document.addEventListener('DOMContentLoaded', () => {
     brightnessInput.addEventListener('input', renderCanvas);
     waveIntensityInput.addEventListener('input', renderCanvas);
     if (wakePowerInput) wakePowerInput.addEventListener('input', updateSimulationAndRender);
-    if (cbShowImpact) cbShowImpact.addEventListener('change', renderCanvas);
     if (cbPersistImpact) cbPersistImpact.addEventListener('change', () => {
         if (!simulationInterval && pollutionState.density) {
             runPollutionSimulation();
         }
         renderCanvas();
+    });
+    if (cbShowImpact) cbShowImpact.addEventListener('change', renderCanvas);
+    if (cbCumulativeHeatmap) cbCumulativeHeatmap.addEventListener('change', () => {
+        runEstimation();
+        if (!simulationInterval && pollutionState.density) {
+            runPollutionSimulation();
+            renderCanvas();
+        }
     });
     if (cbCoastHeatmap) cbCoastHeatmap.addEventListener('change', () => {
         if (!simulationInterval && pollutionState.density) {
@@ -325,49 +334,33 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCanvas();
         }
     });
-    if (cbCumulativeHeatmap) cbCumulativeHeatmap.addEventListener('change', () => {
-        runEstimation();
-        if (!simulationInterval && pollutionState.density) {
-            runPollutionSimulation();
-            renderCanvas();
-        }
-    });
+    // --- Cell Mode Management (3-state: off, blue, clean) ---
+    window._cellMode = 'blue';
+    const btnCellOff = document.getElementById('btn-cell-off');
+    const btnCellBlue = document.getElementById('btn-cell-blue');
+    const btnCellClean = document.getElementById('btn-cell-clean');
 
-    const cbCellsActive = document.getElementById('cb-cells-active');
-    if (cbCellsActive) cbCellsActive.addEventListener('change', () => {
-        if (pollutionState.density) {
-            runPollutionSimulation();
-            renderCanvas();
-        }
-    });
+    function setCellMode(mode) {
+        window._cellMode = mode;
 
-    // Coast clean mode toggle
-    window._coastCleanMode = 'blue'; // default
-    const btnCleanBlue = document.getElementById('btn-clean-mode-blue');
-    const btnCleanHidden = document.getElementById('btn-clean-mode-hidden');
+        [btnCellOff, btnCellBlue, btnCellClean].forEach(btn => {
+            if (!btn) return;
+            const isActive = btn.id === `btn-cell-${mode}`;
+            btn.classList.toggle('active', isActive);
+            btn.style.background = isActive ? 'var(--clr-primary)' : 'transparent';
+            btn.style.color = isActive ? 'white' : 'var(--clr-text-muted)';
+        });
 
-    function setCleanMode(mode) {
-        window._coastCleanMode = mode;
-        if (btnCleanBlue) {
-            const active = mode === 'blue';
-            btnCleanBlue.style.border = active ? '2px solid #3498db' : '1px solid var(--clr-border)';
-            btnCleanBlue.style.color = active ? '#3498db' : '';
-            btnCleanBlue.style.fontWeight = active ? '700' : '';
-        }
-        if (btnCleanHidden) {
-            const active = mode === 'hidden';
-            btnCleanHidden.style.border = active ? '2px solid #27ae60' : '1px solid var(--clr-border)';
-            btnCleanHidden.style.color = active ? '#27ae60' : '';
-            btnCleanHidden.style.fontWeight = active ? '700' : '';
-        }
         if (pollutionState.density) {
             runPollutionSimulation();
             renderCanvas();
         }
     }
 
-    if (btnCleanBlue) btnCleanBlue.addEventListener('click', () => setCleanMode('blue'));
-    if (btnCleanHidden) btnCleanHidden.addEventListener('click', () => setCleanMode('hidden'));
+    if (btnCellOff) btnCellOff.onclick = () => setCellMode('off');
+    if (btnCellBlue) btnCellBlue.onclick = () => setCellMode('blue');
+    if (btnCellClean) btnCellClean.onclick = () => setCellMode('clean');
+
 
     function initProjectData(data) {
         if (data.imageSrc) {
@@ -675,9 +668,8 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // Draw placed cells (only if active toggle is on AND not in "clean" hidden mode)
-        const cbCA = document.getElementById('cb-cells-active');
-        const cellsDrawActive = cbCA ? cbCA.checked : true;
-        const cleanModeHides = window._coastCleanMode === 'hidden';
+        const cellsDrawActive = window._cellMode !== 'off';
+        const cleanModeHides = window._cellMode === 'clean';
 
         if (!cleanModeHides) {
             placedCells.forEach(cell => {
@@ -1245,21 +1237,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnCalcRisk) {
         btnCalcRisk.addEventListener('click', () => {
+            if (!currentImage) return alert("Veuillez d'abord importer une image.");
+            const hasPollution = zones.some(z => z.type === 'polluante');
+            if (!hasPollution) return alert("Aucune zone polluante détectée. Veuillez d'abord tracer une zone et la définir comme 'Polluante' dans l'onglet Calques.");
+
             if (btnCalcRisk.classList.contains('active')) return;
             if (simulationInterval) stopSim();
             btnCalcRisk.classList.add('active');
 
-            // Force show alert if user deselected it
+            if (cbPersistImpact && !cbPersistImpact.checked) {
+                cbPersistImpact.checked = true;
+            }
             if (cbShowImpact && !cbShowImpact.checked) {
                 cbShowImpact.checked = true;
+            }
+
+            // Reset simulation data for a clean 24h run
+            simulationTime = 0.0;
+            if (pollutionState.density) {
+                pollutionState.density.fill(0);
+                pollutionState.cumulativeDensity?.fill(0);
+                pollutionState.cumulativeImpactMask?.fill(0);
+                pollutionState.impactMask?.fill(0);
             }
 
             // Artificial start for boats explicitly
             boatPaths.forEach((b, idx) => {
                 b.isRunning = true;
-                if (b.time === undefined || b.time <= 0) {
-                    b.time = -idx * 150.0;
-                }
+                b.time = -idx * 150.0;
             });
             updateBoatListUI();
 
@@ -2993,8 +2998,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         val = Math.min(1.0, val); // REMOVED the 0.3 min clamp so we can reach the blue/green hues
 
                         // Apply cooling from nearby cells only if cells toggle is active
-                        const cbCellsAct = document.getElementById('cb-cells-active');
-                        const coastCellsActive = cbCellsAct ? cbCellsAct.checked : true;
+                        const coastCellsActive = window._cellMode !== 'off';
                         if (coastCellsActive) {
                             const cx = x * 6 + 3;
                             const cy = y * 6 + 3;
@@ -3016,7 +3020,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         // Full hue range: red (20) → orange → yellow → green → cyan → blue (220)
                         // Determine display mode for cooled zones
-                        const cleanModeHidden = window._coastCleanMode === 'hidden';
+                        const cleanModeHidden = window._cellMode === 'clean';
                         const coolingThreshold = 0.08; // val below this = "fully clean" in hidden mode
 
                         if (cleanModeHidden && val < coolingThreshold) {
