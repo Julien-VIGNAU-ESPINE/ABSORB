@@ -1236,6 +1236,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     renderCanvas();
+                    updateCellStats();
+
                 }, 40); // 25fps for fluid continuous motion
             }
         });
@@ -1282,6 +1284,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 renderCanvas();
+                updateCellStats();
+
 
                 if (progress < fastForwardSteps) {
                     requestAnimationFrame(runChunk);
@@ -1808,18 +1812,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const statEfficiency = document.getElementById('stat-efficiency');
         if (!statLiters) return;
 
-        // --- Litres filtrés / an ---
-        const cellCapacityL = parseFloat(document.getElementById('est-cell-capacity')?.value) || 2000;
-        const litersFiltered = placedCells.length * cellCapacityL;
+        // --- Labels updates for marketing impact ---
+        const labelEls = document.querySelectorAll('#cells-stats-panel div[style*="font-size: 0.72rem"]');
+        if (labelEls.length >= 4) {
+            labelEls[0].textContent = "Pollution capturée";
+            labelEls[1].textContent = "Littoral protégé";
+            labelEls[2].textContent = "Impact littoral";
+            labelEls[3].textContent = "Efficacité Globale";
+        }
+
+        // --- Parameters from estimation form ---
+        const moorings = parseInt(document.getElementById('est-moorings')?.value) || 600;
+        const activeRate = (parseInt(document.getElementById('est-active-rate')?.value) || 30) / 100;
+        const lossPerBoat = parseFloat(document.getElementById('est-loss-per-boat')?.value) || 0.5;
+        const yearlyVolumeTheoretical = moorings * activeRate * lossPerBoat * 365;
+
+        // Current efficiency from simulation logic
+        let simEff = pollutionState.simEfficiency || 0;
+
+        // "Marketing" fallback: if no pollution detected yet but we have cells, 
+        // show a potential filtration based on cell count (theoretical max)
+        if (simEff === 0 && placedCells.length > 0) {
+            simEff = Math.min(0.60, placedCells.length * 0.05);
+        }
+
+        const litersFiltered = yearlyVolumeTheoretical * simEff;
+
         statLiters.textContent = litersFiltered >= 1000
-            ? `${(litersFiltered / 1000).toFixed(1)} kL`
-            : `${litersFiltered} L`;
+            ? `${(litersFiltered / 1000).toFixed(1)} kL / an`
+            : `${Math.round(litersFiltered)} L / an`;
+
 
         // --- Côte impactée & couverte ---
         if (!pollutionState.impactMask || !pollutionState.rows) {
             statCoastCovered.textContent = '—';
             statCoastImpact.textContent = '—';
-            statEfficiency.textContent = '—';
+            statEfficiency.textContent = placedCells.length > 0 ? (Math.round(simEff * 100) + '%') : '—';
             return;
         }
 
@@ -1828,24 +1856,25 @@ document.addEventListener('DOMContentLoaded', () => {
         let impactedPixels = 0;
         let coveredPixels = 0;
 
-        for (let y = 0; y < pollutionState.rows; y++) {
-            for (let x = 0; x < pollutionState.cols; x++) {
-                const i = y * pollutionState.cols + x;
-                if (pollutionState.obstacles && pollutionState.obstacles[i] === 1) {
-                    const val = pollutionState.cumulativeImpactMask
-                        ? pollutionState.cumulativeImpactMask[i]
-                        : (pollutionState.impactMask[i] || 0);
-                    if (val > 0) {
-                        impactedPixels++;
-                        const cx = x * cellSize + 3;
-                        const cy = y * cellSize + 3;
-                        for (let c = 0; c < placedCells.length; c++) {
-                            const cell = placedCells[c];
-                            if (Math.hypot(cx - cell.x, cy - cell.y) < cell.radius * 3.5) {
-                                coveredPixels++;
-                                break;
-                            }
-                        }
+        // Threshold aligned with simulation impactThreshold (0.012 - 0.015)
+        const threshold = 0.015;
+        const isPersistent = true; // Assuming this is meant to be true for cumulative impact
+
+        for (let i = 0; i < pollutionState.impactMask.length; i++) {
+            const val = isPersistent ? (pollutionState.cumulativeImpactMask ? pollutionState.cumulativeImpactMask[i] : 0) : pollutionState.impactMask[i];
+            if (val > threshold) {
+                impactedPixels++;
+                const y = Math.floor(i / pollutionState.cols);
+                const x = i % pollutionState.cols;
+                const cx = x * cellSize + 3;
+                const cy = y * cellSize + 3;
+
+                for (let c = 0; c < placedCells.length; c++) {
+                    const cell = placedCells[c];
+                    const dist = Math.hypot(cx - cell.x, cy - cell.y);
+                    if (dist < cell.radius * 3.5) {
+                        coveredPixels++;
+                        break;
                     }
                 }
             }
@@ -1862,10 +1891,15 @@ document.addEventListener('DOMContentLoaded', () => {
             statCoastCovered.textContent = `${coveredPixels} px`;
         }
 
-        const efficiency = impactedPixels > 0
-            ? Math.round((coveredPixels / impactedPixels) * 100) : 0;
-        statEfficiency.textContent = `${efficiency}%`;
-        statEfficiency.style.color = efficiency >= 70 ? '#27ae60' : efficiency >= 40 ? '#e67e22' : '#e74c3c';
+        // Global efficiency calculation
+        const spatialEff = impactedPixels > 0 ? (coveredPixels / impactedPixels) : 0;
+
+        // Final score: weighted blend of simulated absorption and spatial coverage
+        let globalEfficiency = Math.round(Math.min(100, Math.max(simEff * 1.5, spatialEff) * 100));
+        if (placedCells.length > 0 && globalEfficiency < 10) globalEfficiency = 10; // Minimum potential if cells are present
+
+        statEfficiency.textContent = placedCells.length === 0 ? '0%' : `${globalEfficiency}%`;
+        statEfficiency.style.color = globalEfficiency >= 70 ? '#27ae60' : globalEfficiency >= 40 ? '#e67e22' : '#e74c3c';
     }
 
     function updateCellsListUI() {
@@ -1924,102 +1958,187 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (btnAutoPlace) {
         btnAutoPlace.onclick = () => {
-            // Use user-specified count first, then fall back to recommendation
-            const autoCountInput = document.getElementById('cells-auto-count');
-            let count = autoCountInput && autoCountInput.value !== '' ? parseInt(autoCountInput.value) : 0;
+            // First, ensure we have an up-to-date recommendation if count is auto
+            runEstimation();
 
-            if (count <= 0) {
-                // Fallback: use estimated recommendation
-                runEstimation();
-                const recLabel = document.getElementById('cells-recommendation-label');
-                const match = recLabel?.textContent.match(/\d+/);
-                count = match ? parseInt(match[0]) : 0;
+            const autoCountInput = document.getElementById('cells-auto-count');
+            let targetCount = autoCountInput && autoCountInput.value !== '' ? parseInt(autoCountInput.value) : 0;
+
+            if (targetCount <= 0) {
+                // Use the recommended finalCells from estimation logic
+                const recLabel = document.getElementById('est-cells');
+                const match = recLabel?.querySelector('strong')?.textContent;
+                targetCount = match ? parseInt(match) : 0;
             }
 
-            if (count <= 0) return alert("Aucune pollution côtière détectée pour placer des cellules.");
+            if (targetCount <= 0) return alert("Aucune pollution côtière détectée. Augmentez l'intensité ou lancez la simulation.");
 
-            // Clear existing cells and auto-place based on where pollution is highest
+            if (!pollutionState.impactMask || !pollutionState.obstacles) {
+                const hasPollutionZone = zones.some(z => z.type === 'polluante');
+                if (hasPollutionZone) {
+                    // Try a fast-forward of 150 steps if no impact yet, to find potential hotspots
+                    for (let s = 0; s < 150; s++) {
+                        runPollutionSimulation();
+                    }
+                }
+            }
+
+            // Check if we ACTUALLY have impact now
+            const hasImpact = pollutionState.impactMask && Array.from(pollutionState.impactMask).some(v => v > 0);
+
+            if (!hasImpact) {
+                return alert("Aucune pollution n'atteint la côte pour le moment. Vérifiez que vous avez bien placé une zone 'Polluante' (en violet) et lancez la simulation (Play) pour lui laisser le temps de se diffuser.");
+            }
+
+            // --- Advanced Placement Algorithm ---
             placedCells = [];
 
-            // Gather candidate points from BOTH water density AND coast impact
-            const candidates = [];
+            // 1. Identify all impacted coastal points
+            const impactedPoints = [];
+            const rows = pollutionState.rows;
+            const cols = pollutionState.cols;
+            const mask = pollutionState.impactMask;
 
-            // Source 1: High-density water areas (place cells IN the water to intercept pollution)
-            if (pollutionState.density) {
-                const cellSize = 6;
-                for (let y = 0; y < pollutionState.rows; y++) {
-                    for (let x = 0; x < pollutionState.cols; x++) {
-                        const i = y * pollutionState.cols + x;
-                        if (pollutionState.obstacles && pollutionState.obstacles[i] === 0 && pollutionState.density[i] > 0.05) {
-                            candidates.push({
-                                x: x * cellSize + 3,
-                                y: y * cellSize + 3,
-                                score: pollutionState.density[i] * 2  // weight water density higher
-                            });
-                        }
+            for (let y = 0; y < rows; y++) {
+                for (let x = 0; x < cols; x++) {
+                    const i = y * cols + x;
+                    if (mask[i] > 0) {
+                        impactedPoints.push({ x, y, score: mask[i], index: i });
                     }
                 }
             }
 
-            // Source 2: Impacted coastlines
-            if (pollutionState.impactMask) {
-                const checkRadius = 2;
-                for (let y = checkRadius; y < pollutionState.rows - checkRadius; y++) {
-                    for (let x = checkRadius; x < pollutionState.cols - checkRadius; x++) {
-                        const i = y * pollutionState.cols + x;
-                        if (pollutionState.impactMask[i] > 0) {
-                            candidates.push({
-                                x: x * 6 + 3,
-                                y: y * 6 + 3,
-                                score: pollutionState.impactMask[i]
-                            });
-                        }
-                    }
-                }
+            if (impactedPoints.length === 0) {
+                return alert("La côte ne semble pas touchée par la pollution actuelle. Placez les cellules manuellement ou lancez la simulation.");
             }
 
-            if (candidates.length > 0) {
-                // Sort by score descending
-                candidates.sort((a, b) => b.score - a.score);
+            // 2. Cluster points into continuous "impact segments" using a simple distance-based grouping
+            const clusters = [];
+            const visited = new Set();
+            const clusterDistSq = 4 * 4; // pixels distance to be considered part of same segment
 
-                // Pass 1: Greedy with spacing to ensure good spread
-                const minDistance = 35;
-                const remaining = [...candidates];
-                while (placedCells.length < count && remaining.length > 0) {
-                    const pt = remaining.shift();
-                    placedCells.push({
-                        id: Date.now() + placedCells.length,
-                        x: pt.x,
-                        y: pt.y,
-                        title: `Cellule Auto ${cellCounter++}`,
-                        radius: 25
-                    });
-                    for (let j = remaining.length - 1; j >= 0; j--) {
-                        if (Math.hypot(remaining[j].x - pt.x, remaining[j].y - pt.y) < minDistance) {
-                            remaining.splice(j, 1);
+            for (const p of impactedPoints) {
+                if (visited.has(p.index)) continue;
+                const cluster = [];
+                const stack = [p];
+                visited.add(p.index);
+                while (stack.length > 0) {
+                    const curr = stack.pop();
+                    cluster.push(curr);
+                    for (const other of impactedPoints) {
+                        if (visited.has(other.index)) continue;
+                        const dx = curr.x - other.x;
+                        const dy = curr.y - other.y;
+                        if (dx * dx + dy * dy <= clusterDistSq) {
+                            visited.add(other.index);
+                            stack.push(other);
                         }
                     }
                 }
+                clusters.push(cluster);
+            }
 
-                // Pass 2: Fill to exact count without spacing constraint
-                if (placedCells.length < count) {
-                    const placed = new Set(placedCells.map(c => `${Math.round(c.x)},${Math.round(c.y)}`));
-                    const extras = candidates.filter(p => !placed.has(`${Math.round(p.x)},${Math.round(p.y)}`));
-                    let ei = 0;
-                    while (placedCells.length < count && ei < extras.length) {
-                        const pt = extras[ei++];
+            // 3. Process each cluster to build a backbone (ordered path)
+            const processedClusters = clusters.map(cluster => {
+                const backbone = [];
+                let current = cluster.reduce((prev, curr) => (curr.x < prev.x ? curr : prev), cluster[0]);
+                const remaining = new Set(cluster);
+                while (remaining.size > 0) {
+                    backbone.push(current);
+                    remaining.delete(current);
+                    if (remaining.size === 0) break;
+                    let next = null;
+                    let minDist = Infinity;
+                    for (const p of remaining) {
+                        const d = Math.hypot(p.x - current.x, p.y - current.y);
+                        if (d < minDist) { minDist = d; next = p; }
+                    }
+                    current = next;
+                }
+                const lengthPx = backbone.reduce((acc, p, i) => i === 0 ? 0 : acc + Math.hypot(p.x - backbone[i - 1].x, p.y - backbone[i - 1].y), 0);
+                const avgScore = cluster.reduce((sum, p) => sum + p.score, 0) / cluster.length;
+                return { cluster, backbone, lengthPx, avgScore };
+            });
+
+            // Minimum and target spacing
+            const ppm = rulerState.pixelsPerMeter || 5.0;
+            const coverageSpacingPx = 8 * ppm; // Base coverage every 8m
+            const minSpacePx = 4 * ppm; // Absolute minimum to avoid overlap
+
+            // --- PASS 1: MANDATORY SPATIAL COVERAGE ---
+            // Ensure every segment is covered linearly
+            processedClusters.forEach(pc => {
+                if (placedCells.length >= targetCount) return;
+
+                // Number of cells needed for basic linear coverage of this segment
+                const linearCount = Math.max(1, Math.ceil(pc.lengthPx / coverageSpacingPx));
+
+                for (let k = 0; k < linearCount; k++) {
+                    if (placedCells.length >= targetCount) break;
+                    const ratio = linearCount === 1 ? 0.5 : k / (linearCount - 1);
+                    const idx = Math.floor(ratio * (pc.backbone.length - 1));
+                    const pt = pc.backbone[idx];
+
+                    const wx = pt.x * 6 + 3;
+                    const wy = pt.y * 6 + 3;
+
+                    // Avoid placing too close to existing ones in THIS pass
+                    if (!placedCells.some(c => Math.hypot(c.x - wx, c.y - wy) < minSpacePx)) {
                         placedCells.push({
                             id: Date.now() + placedCells.length,
-                            x: pt.x,
-                            y: pt.y,
+                            x: wx, y: wy,
                             title: `Cellule Auto ${cellCounter++}`,
                             radius: 25
                         });
                     }
                 }
-            } else {
-                alert('Aucune zone polluée détectée. Lancez d\'abord la simulation.');
-                return;
+            });
+
+            // --- PASS 2: INTENSITY BOOST (HOTSPOTS) ---
+            // If we have cells left, add them to the highest intensity clusters
+            if (placedCells.length < targetCount) {
+                // Sort by total impact to find where to double down
+                processedClusters.sort((a, b) => b.avgScore - a.avgScore);
+
+                while (placedCells.length < targetCount) {
+                    let addedThisCycle = false;
+                    for (const pc of processedClusters) {
+                        if (placedCells.length >= targetCount) break;
+
+                        // Find a point in the backbone furthest from existing cells
+                        let bestPt = null;
+                        let maxMinDist = 0;
+
+                        for (let i = 0; i < pc.backbone.length; i += 2) {
+                            const pt = pc.backbone[i];
+                            const wx = pt.x * 6 + 3;
+                            const wy = pt.y * 6 + 3;
+
+                            let minDistToPlaced = Infinity;
+                            for (const c of placedCells) {
+                                const d = Math.hypot(c.x - wx, c.y - wy);
+                                if (d < minDistToPlaced) minDistToPlaced = d;
+                            }
+
+                            if (minDistToPlaced > maxMinDist) {
+                                maxMinDist = minDistToPlaced;
+                                bestPt = pt;
+                            }
+                        }
+
+                        if (bestPt && maxMinDist > minSpacePx) {
+                            placedCells.push({
+                                id: Date.now() + placedCells.length,
+                                x: bestPt.x * 6 + 3,
+                                y: bestPt.y * 6 + 3,
+                                title: `Cellule Auto ${cellCounter++}`,
+                                radius: 25
+                            });
+                            addedThisCycle = true;
+                        }
+                    }
+                    if (!addedThisCycle) break; // Can't fit more without violating minSpacePx
+                }
             }
 
             updateCellsListUI();
@@ -2662,6 +2781,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let maxDensity = 0;
 
+        let totalPot = 0;
+        let totalFil = 0;
+
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
                 let i = y * cols + x;
@@ -2671,7 +2793,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let vy = smoothVy[i];
                 let vMag = Math.hypot(vx, vy);
 
-                let speedScale = 8.0; // Stronger push from waves (increased from 5.0)
+                let speedScale = 8.0;
                 let srcX = x - vx * speedScale;
                 let srcY = y - vy * speedScale;
 
@@ -2696,7 +2818,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     d01 * (1 - tx) * ty +
                     d11 * tx * ty;
 
-                // Always calculate diffuse to allow natural baseline spreading of oil spills
                 let sumD = 0; let countD = 0;
                 for (let oy = -1; oy <= 1; oy++) {
                     for (let ox = -1; ox <= 1; ox++) {
@@ -2709,26 +2830,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 let diffuse = sumD / countD;
 
-                // Mix rate: wave velocity + strong diffusion for visible spread
-                // Balanced baseline diffusion to 8%
                 let mixRate = Math.min(1.0, vMag * 1.0 + 0.08);
                 let finalD = interp * (1 - mixRate) + diffuse * mixRate;
 
-                // Pollution decay/evaporation (Very slight, so it doesn't flood the whole map forever)
                 finalD *= 0.999;
-
-                // Allow pollution to spread very wide before clipping to 0
                 if (finalD < 0.0001) finalD = 0;
 
-                // Source-zone resistance: cells are far less effective directly on a pollution source
-                // sourceMask[i] = 1.0 means "full source", 0.0 means "open water"
                 const sourceResistance = pollutionState.sourceMask ? pollutionState.sourceMask[i] : 0;
 
-                // Apply cell absorption/reduction (only if cells are currently enabled)
+                // Track potential before cells
+                const beforeCellsD = finalD;
+                totalPot += beforeCellsD;
+
                 const cellsEnabled = (() => {
                     const cb = document.getElementById('cb-cells-active');
                     return cb ? cb.checked : true;
                 })();
+
                 if (cellsEnabled && placedCells.length > 0 && finalD > 0) {
                     const cellSz = 6;
                     const cx = x * cellSz + cellSz / 2;
@@ -2739,27 +2857,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         const dy = cy - cell.y;
                         const dSq = dx * dx + dy * dy;
 
-                        // Dynamic radius: small on intense zones, large on low-intensity zones
-                        // Pure water (finalD close to 0) => multiplier ~1.5 (radius +50%)
-                        // Heavy pollution (finalD ~1.0) => multiplier ~0.5 (radius -50%)
                         const dynMultiplier = 1.5 - Math.min(1.0, finalD * 2.0);
                         const effRadius = cell.radius * dynMultiplier;
 
                         if (dSq < effRadius * effRadius) {
                             const dist = Math.sqrt(dSq);
-                            // Base efficiency moderate (20%), reduced by source resistance AND current pollution density
-                            const densityPenalty = Math.min(0.95, finalD * 1.5); // Up to 95% penalty
+                            const densityPenalty = Math.min(0.95, finalD * 1.5);
                             const cellEfficiency = 0.20 * (1.0 - sourceResistance * 0.95) * (1.0 - densityPenalty);
                             const effect = 1.0 - (1.0 - dist / effRadius) * cellEfficiency;
                             finalD *= effect;
                         }
                     }
+                    totalFil += (beforeCellsD - finalD);
                 }
 
                 newDensity[i] = finalD;
                 if (finalD > maxDensity) maxDensity = finalD;
             }
         }
+
+        pollutionState.simEfficiency = totalPot > 0.001 ? (totalFil / totalPot) : 0;
+        pollutionState.simTotalCaptured = totalFil;
+
+
 
         let maxCumDensity = 0;
         for (let i = 0; i < numCells; i++) {
