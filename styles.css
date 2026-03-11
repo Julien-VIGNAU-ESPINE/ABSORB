@@ -168,6 +168,30 @@ input[type="range"] {
     margin: 4px 0;
 }
 
+.sidebar-category {
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid var(--clr-border);
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+[data-theme="dark"] .sidebar-category {
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.sidebar-category .category-header h3 {
+    font-size: 0.95rem;
+    color: var(--clr-primary);
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
 /* Right Tools Sidebar */
 .tools-sidebar {
     width: 72px;

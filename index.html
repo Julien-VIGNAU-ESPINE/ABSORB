@@ -40,49 +40,74 @@
         <div class="workspace-wrapper">
             <!-- Sidebar -->
             <aside id="sidebar-panel" class="glass-sidebar hidden">
-                <div class="image-adjustments">
-                    <h2>Image</h2>
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>📁 Fichiers & Projet</h3>
+                    </div>
+                    <div class="save-load-group" style="display: flex; gap: 8px;">
+                        <button id="btn-save-project" class="btn-secondary btn-small" style="flex: 1;"
+                            title="Sauvegarder en local">Sauvegarder</button>
+                        <button id="btn-load-project" class="btn-secondary btn-small" style="flex: 1;"
+                            title="Charger un fichier">Charger</button>
+                        <input type="file" id="load-file-input" accept=".zip,.json" hidden>
+                    </div>
+                </div>
+
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>🎨 Affichage & Visuels</h3>
+                    </div>
                     <div class="slider-group">
-                        <label for="img-brightness">Assombrir</label>
+                        <label for="img-brightness">Assombrir la carte</label>
                         <input type="range" id="img-brightness" min="20" max="100" value="100">
                     </div>
                     <div class="slider-group">
-                        <label for="wave-intensity">Opacité vagues</label>
+                        <label for="wave-intensity">Opacité des vagues</label>
                         <input type="range" id="wave-intensity" min="10" max="100" value="65">
                     </div>
                     <div class="slider-group">
-                        <label for="wake-power">Puissance Sillage</label>
+                        <label for="pollution-intensity">Opacité de la pollution</label>
+                        <input type="range" id="pollution-intensity" min="10" max="100" value="70">
+                    </div>
+                </div>
+
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>⚙️ Physique de Simulation</h3>
+                    </div>
+                    <div class="slider-group">
+                        <label for="wake-power">Puissance de diffusion (vagues)</label>
                         <input type="range" id="wake-power" min="10" max="150" value="50">
                     </div>
                     <div class="slider-group">
-                        <label for="sim-speed">Vitesse de simulation</label>
+                        <label for="sim-speed">Vitesse de simulation temporelle</label>
                         <div style="display: flex; gap: 10px; align-items: center;">
                             <input type="range" id="sim-speed" min="1" max="100" value="1" style="flex: 1;">
                             <input type="number" id="sim-speed-num" min="1" max="100" value="1"
                                 style="width: 50px; background: var(--clr-background); border: 1px solid var(--clr-border); border-radius: 4px; color: var(--clr-text-main); padding: 2px 4px; font-size: 0.85rem;">
                         </div>
                     </div>
+                </div>
 
-                    <!-- Sub-tabs for Simulation -->
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>📊 Calques d'Analyse (Heatmaps)</h3>
+                    </div>
+                    <!-- Sub-tabs for Simulation Context -->
                     <div class="sim-sub-tabs"
-                        style="display: flex; gap: 4px; background: var(--clr-border); padding: 2px; border-radius: 6px; margin-top: 15px; margin-bottom: 12px;">
+                        style="display: flex; gap: 4px; background: rgba(0,0,0,0.1); padding: 2px; border-radius: 6px; margin-bottom: 8px;">
                         <button id="btn-sub-tab-water" class="sim-sub-tab-btn active"
-                            style="flex: 1; border: none; background: white; color: var(--clr-text-main); padding: 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">💧
+                            style="flex: 1; border: none; background: var(--clr-surface); color: var(--clr-text-main); padding: 4px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">💧
                             Eau</button>
                         <button id="btn-sub-tab-coast" class="sim-sub-tab-btn"
-                            style="flex: 1; border: none; background: transparent; color: var(--clr-text-muted); padding: 6px; border-radius: 4px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s;">🏝️
+                            style="flex: 1; border: none; background: transparent; color: var(--clr-text-muted); padding: 4px; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">🏝️
                             Côte</button>
                     </div>
 
-                    <!-- Water Settings -->
                     <div id="sim-panel-water">
-                        <div class="slider-group">
-                            <label for="pollution-intensity">Opacité pollution</label>
-                            <input type="range" id="pollution-intensity" min="10" max="100" value="70">
-                        </div>
                         <div class="slider-group"
-                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
-                            <label for="cb-show-heatmap" style="margin-bottom: 0;">Afficher Heatmap</label>
+                            style="flex-direction: row; justify-content: space-between; align-items: center;">
+                            <label for="cb-show-heatmap" style="margin-bottom: 0;">Heatmap Instantanée</label>
                             <input type="checkbox" id="cb-show-heatmap" checked>
                         </div>
                         <div class="slider-group"
@@ -91,13 +116,12 @@
                             <input type="checkbox" id="cb-cumulative-heatmap">
                         </div>
                         <div class="slider-group"
-                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px;">
+                            style="flex-direction: row; justify-content: space-between; align-items: center; margin-top: 8px; border-top: 1px dashed var(--clr-border); padding-top: 8px;">
                             <label for="cb-cells-active" style="margin-bottom: 0;">🔲 Cellules actives</label>
                             <input type="checkbox" id="cb-cells-active" checked>
                         </div>
                     </div>
 
-                    <!-- Coast Settings -->
                     <div id="sim-panel-coast" class="hidden">
                         <div class="slider-group"
                             style="flex-direction: row; justify-content: space-between; align-items: center;">
@@ -114,27 +138,31 @@
                             <label for="cb-coast-heatmap" style="margin-bottom: 0;">Côtes en Heatmap</label>
                             <input type="checkbox" id="cb-coast-heatmap">
                         </div>
-                        <div style="margin-top: 10px;">
+                        <div style="margin-top: 10px; border-top: 1px dashed var(--clr-border); padding-top: 8px;">
                             <label
-                                style="font-size: 0.8rem; color: var(--clr-text-muted); display:block; margin-bottom: 5px;">Zones
-                                protégées par cellules :</label>
+                                style="font-size: 0.8rem; color: var(--clr-text-muted); display:block; margin-bottom: 5px;">Rendu
+                                du nettoyage par cellules :</label>
                             <div style="display: flex; gap: 6px;">
                                 <button id="btn-clean-mode-blue" class="btn-secondary btn-small active"
-                                    style="flex:1; font-size:0.78rem; padding: 4px 6px; border: 2px solid #3498db; color:#3498db;">🔵
-                                    Bleu clair</button>
+                                    style="flex:1; font-size:0.75rem; padding: 4px; border: 2px solid #3498db; color:#3498db;">🔵
+                                    Bleu</button>
                                 <button id="btn-clean-mode-hidden" class="btn-secondary btn-small"
-                                    style="flex:1; font-size:0.78rem; padding: 4px 6px;">✨ Propre</button>
+                                    style="flex:1; font-size:0.75rem; padding: 4px;">✨ Propre</button>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- Scale ruler section -->
-                <div id="scale-section" class="hidden">
-                    <div class="sidebar-divider"></div>
-                    <div style="margin-top: 4px;">
-                        <h2 style="margin-bottom:8px;">📏 Échelle</h2>
+
+                <div id="scale-section-container" class="sidebar-category">
+                    <div class="category-header">
+                        <h3 style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                            📏 Calibrage Échelle
+                        </h3>
+                    </div>
+                    <div id="scale-section" class="hidden">
                         <p id="scale-status" style="font-size:0.8rem; color:var(--clr-text-muted); margin-bottom:8px;">
-                            Tracez une ligne sur la carte, puis entrez sa longueur réelle.</p>
+                            Tracez une ligne sur la carte à l'aide de la règle, puis entrez sa longueur.
+                        </p>
                         <div class="slider-group" style="flex-direction:row; align-items:center; gap:8px;">
                             <input type="number" id="scale-meters" min="1" value="100"
                                 style="width:80px; padding:6px 8px; border-radius:6px; border:1px solid var(--clr-border); background:var(--clr-surface); color:inherit; font-family:inherit;">
@@ -145,124 +173,128 @@
                     </div>
                 </div>
 
-                <div class="sidebar-divider"></div>
-                <div class="save-load-group" style="display: flex; gap: 8px; margin-top: 8px;">
-                    <button id="btn-save-project" class="btn-secondary btn-small" style="flex: 1;"
-                        title="Sauvegarder en local">Sauvegarder</button>
-                    <button id="btn-load-project" class="btn-secondary btn-small" style="flex: 1;"
-                        title="Charger un fichier">Charger</button>
-                    <input type="file" id="load-file-input" accept=".zip,.json" hidden>
-                </div>
-                <hr class="sidebar-divider" style="margin-top: 12px; margin-bottom: 8px;">
-
-                <div class="sidebar-tabs" style="display: flex; gap: 8px; margin-bottom: 12px;">
-                    <button id="tab-zones" class="btn-secondary tab-btn active" style="flex: 1;">Zones</button>
-                    <button id="tab-boats" class="btn-secondary tab-btn" style="flex: 1;">Bateaux</button>
-                </div>
-
-                <div id="zones-section">
-                    <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <h2>Zones définies</h2>
-                        <button id="btn-add-folder" class="btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;"
-                            title="Créer un nouveau dossier">+ Dossier</button>
+                <div class="sidebar-category" style="padding:0; background:none; border:none; gap: 12px;">
+                    <div class="sidebar-tabs" style="display: flex; gap: 8px;">
+                        <button id="tab-zones" class="btn-secondary tab-btn active" style="flex: 1;">Zones</button>
+                        <button id="tab-boats" class="btn-secondary tab-btn" style="flex: 1;">Bateaux</button>
                     </div>
-                    <div id="zone-list-container" class="zone-list"></div>
-                </div>
 
-                <div id="boats-section" class="hidden">
-                    <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <h2>Trajets Bateaux</h2>
+                    <div id="zones-section" class="sidebar-category" style="margin-top: 0;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 0.95rem; font-weight: 600; color: var(--clr-primary);">Éléments
+                                tracés</span>
+                            <button id="btn-add-folder" class="btn-secondary"
+                                style="padding: 2px 6px; font-size: 0.75rem; display: flex; align-items: center; justify-content: center; border-radius: 4px;"
+                                title="Créer un nouveau dossier">+ Dossier</button>
+                        </div>
+                        <div id="zone-list-container" class="zone-list" style="max-height: 200px;"></div>
                     </div>
-                    <div id="boat-list-container" class="zone-list"></div>
+
+                    <div id="boats-section" class="sidebar-category hidden" style="margin-top: 0;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-size: 0.95rem; font-weight: 600; color: var(--clr-primary);">Trajets
+                                Bateaux</span>
+                        </div>
+                        <div id="boat-list-container" class="zone-list" style="max-height: 200px;"></div>
+                    </div>
                 </div>
             </aside>
 
             <!-- Cells Sidebar - Visible in Cells mode -->
             <aside id="cells-sidebar-panel" class="glass-sidebar hidden">
-                <div class="image-adjustments">
-                    <h2>🔲 Gestion des Cellules</h2>
-                    <p style="font-size: 0.85rem; color: var(--clr-text-muted); margin-bottom: 15px;">
+                <div class="sidebar-category" style="background: var(--clr-surface);">
+                    <div class="category-header">
+                        <h3>🔲 Recommandation</h3>
+                    </div>
+                    <p style="font-size: 0.85rem; color: var(--clr-text-muted); margin-bottom: 8px;">
                         Configurez et placez vos cellules filtrantes en fonction des zones polluées constatées.
                     </p>
-
-                    <div class="sidebar-divider"></div>
-
-                    <div class="est-formula-box" style="padding: 12px; margin-bottom: 15px;">
-                        <div class="est-formula-title">Recommandation</div>
+                    <div class="est-formula-box"
+                        style="padding: 12px; background: var(--clr-primary-light); border-radius: 8px;">
+                        <div class="est-formula-title" style="font-size: 0.85rem; color: var(--clr-text-muted);">Nombre
+                            idéal requis</div>
                         <div id="cells-recommendation-label"
-                            style="font-size: 1.1rem; font-weight: 600; color: #3498db; margin-top: 5px;">—</div>
+                            style="font-size: 1.15rem; font-weight: 700; color: var(--clr-primary); margin-top: 4px;">—
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>🛠️ Placement Manuel & Auto</h3>
                     </div>
 
                     <div
-                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding: 8px 12px; background: var(--clr-surface); border-radius: 8px; border: 1px solid var(--clr-border);">
+                        style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--clr-background); border-radius: 8px; border: 1px solid var(--clr-border);">
                         <span style="font-size: 0.85rem; color: var(--clr-text-muted);">Cellules placées</span>
                         <span id="cells-count-label"
                             style="font-size: 1.1rem; font-weight: 700; color: #3498db;">0</span>
                     </div>
 
-                    <div style="margin-bottom: 12px;">
-                        <button id="btn-toggle-cell-tool" class="btn-primary btn-small"
-                            style="width: 100%; background: linear-gradient(135deg, #3498db, #2980b9);">
-                            🖊️ Placer des cellules
-                        </button>
-                    </div>
+                    <button id="btn-toggle-cell-tool" class="btn-primary btn-small"
+                        style="width: 100%; background: linear-gradient(135deg, #3498db, #2980b9); margin-top: 4px;">
+                        🖊️ Mode Placement Manuel
+                    </button>
 
-                    <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 10px;">
-                        <label style="font-size: 0.85rem; color: var(--clr-text-muted); white-space: nowrap;">Nb auto
+                    <div style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+                        <label style="font-size: 0.85rem; color: var(--clr-text-muted); white-space: nowrap;">Génération
                             :</label>
                         <input type="number" id="cells-auto-count" min="1" max="200" value="" placeholder="auto"
-                            style="flex:1; background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 6px; padding: 5px 8px; color: var(--clr-text-main); font-size: 0.9rem;">
+                            style="flex:1; background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 6px; padding: 6px 8px; color: var(--clr-text-main); font-size: 0.9rem;">
+                        <button id="btn-auto-place" class="btn-primary btn-small">Calculer</button>
                     </div>
 
-                    <div style="display: flex; gap: 8px; margin-bottom:15px;">
-                        <button id="btn-auto-place" class="btn-primary btn-small" style="flex: 1;">Génération
-                            auto</button>
-                        <button id="btn-clear-cells" class="btn-secondary btn-small" style="color:#e74c3c">Tout
-                            effacer</button>
+                    <div style="border-top: 1px dashed var(--clr-border); padding-top: 12px; margin-top: 4px;">
+                        <button id="btn-clear-cells" class="btn-secondary btn-small"
+                            style="width: 100%; color:#e74c3c">Vider la carte</button>
                     </div>
+                </div>
 
-                    <div class="sidebar-divider"></div>
-
-                    <h2>📊 Statistiques</h2>
-                    <div id="cells-stats-panel" style="margin-bottom: 15px;">
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <div class="sidebar-category">
+                    <div class="category-header">
+                        <h3>📊 Statistiques d'Efficacité</h3>
+                    </div>
+                    <div id="cells-stats-panel">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <div
                                 style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
-                                <div style="font-size: 1.3rem; font-weight: 700; color: #3498db;" id="stat-liters">—
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #3498db;" id="stat-liters">—
                                 </div>
                                 <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">
-                                    Litres/an filtrés</div>
+                                    Litres/an</div>
                             </div>
                             <div
                                 style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
-                                <div style="font-size: 1.3rem; font-weight: 700; color: #27ae60;"
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #27ae60;"
                                     id="stat-coast-covered">—</div>
-                                <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">Côte
-                                    couverte</div>
-                            </div>
-                            <div
-                                style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
-                                <div style="font-size: 1.3rem; font-weight: 700; color: #e67e22;"
-                                    id="stat-coast-impacted">—</div>
-                                <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">Côte
-                                    impactée</div>
-                            </div>
-                            <div
-                                style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
-                                <div style="font-size: 1.3rem; font-weight: 700; color: #9b59b6;" id="stat-efficiency">—
+                                <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">Couverte
                                 </div>
+                            </div>
+                            <div
+                                style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #e67e22;"
+                                    id="stat-coast-impacted">—</div>
+                                <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">Impactée
+                                </div>
+                            </div>
+                            <div
+                                style="background: var(--clr-surface); border: 1px solid var(--clr-border); border-radius: 8px; padding: 10px; text-align: center;">
+                                <div style="font-size: 1.25rem; font-weight: 700; color: #9b59b6;" id="stat-efficiency">
+                                    —</div>
                                 <div style="font-size: 0.72rem; color: var(--clr-text-muted); margin-top: 2px;">
                                     Efficacité</div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="sidebar-divider"></div>
-
-                    <h2>Liste des cellules</h2>
-                    <div id="cells-list-container" class="zone-list"></div>
+                <div class="sidebar-category" style="flex: 1; min-height: 0;">
+                    <div class="category-header">
+                        <h3>📋 Liste des cellules</h3>
+                    </div>
+                    <div id="cells-list-container" class="zone-list" style="margin-top: 4px;"></div>
                 </div>
             </aside>
 
