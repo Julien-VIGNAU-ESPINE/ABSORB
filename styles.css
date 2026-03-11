@@ -65,13 +65,14 @@ body {
 /* Container */
 .app-container {
     width: 100%;
-    max-width: 1400px;
+    max-width: 1720px;
     height: 100vh;
     display: flex;
     flex-direction: column;
-    padding: 24px;
-    gap: 24px;
+    padding: 20px;
+    gap: 20px;
 }
+
 
 /* Top Header - Glassmorphism */
 .glass-header {
@@ -80,7 +81,8 @@ body {
     -webkit-backdrop-filter: var(--glass-blur);
     border: 1px solid var(--clr-border);
     border-radius: 16px;
-    padding: 20px 32px;
+    padding: 16px 28px;
+
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -90,11 +92,11 @@ body {
 }
 
 .glass-header h1 {
-    font-size: 1.5rem;
-    font-weight: 600;
+    font-size: 1.8rem;
+    font-weight: 700;
     color: var(--clr-primary);
     margin-bottom: 4px;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.015em;
 }
 
 .glass-header p {
@@ -105,13 +107,15 @@ body {
 .workspace-wrapper {
     display: flex;
     flex: 1;
-    gap: 24px;
+    gap: 20px;
+
     min-height: 0;
 }
 
 /* Glass Sidebar */
 .glass-sidebar {
-    width: 320px;
+    width: 360px;
+
     background: var(--clr-surface);
     backdrop-filter: var(--glass-blur);
     -webkit-backdrop-filter: var(--glass-blur);
@@ -640,8 +644,9 @@ canvas {
 
 .estimation-body {
     display: grid;
-    grid-template-columns: 280px 1fr 280px;
-    gap: 16px;
+    grid-template-columns: 320px 1fr 320px;
+    gap: 20px;
+
     flex: 1;
     min-height: 0;
 }
