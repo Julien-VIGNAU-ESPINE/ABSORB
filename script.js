@@ -170,35 +170,43 @@ document.addEventListener('DOMContentLoaded', () => {
         zonesSection.classList.add('hidden');
     });
 
-    // --- Page Navigation (Simulation / Cells / Estimation / Plans / Costs / Quote) ---
+    // --- Page Navigation (Simulation / Cells / Estimation / Business) ---
     const navSimulation = document.getElementById('nav-simulation');
     const navCells = document.getElementById('nav-cells');
     const navEstimation = document.getElementById('nav-estimation');
-    const navPlans = document.getElementById('nav-plans');
-    const navCosts = document.getElementById('nav-costs');
-    const navQuote = document.getElementById('nav-quote');
+    const navBusiness = document.getElementById('nav-business');
+
+    const businessView = document.getElementById('business-view');
     const estimationPage = document.getElementById('estimation-page');
     const plansPage = document.getElementById('plans-page');
     const costsPage = document.getElementById('costs-page');
     const quotePage = document.getElementById('quote-page');
     const workspaceWrapper = document.querySelector('.workspace-wrapper');
 
-    if (navSimulation && navCells && navEstimation) {
-        navSimulation.addEventListener('click', () => setActivePage('sim'));
-        navCells.addEventListener('click', () => setActivePage('cells'));
-        navEstimation.addEventListener('click', () => setActivePage('est'));
-    }
-    if (navPlans) navPlans.addEventListener('click', () => setActivePage('plans'));
-    if (navCosts) navCosts.addEventListener('click', () => setActivePage('costs'));
-    if (navQuote) navQuote.addEventListener('click', () => setActivePage('quote'));
+    // Sub-nav buttons inside Business
+    const subnavPlans = document.getElementById('subnav-plans');
+    const subnavCosts = document.getElementById('subnav-costs');
+    const subnavQuote = document.getElementById('subnav-quote');
+
+    if (navSimulation) navSimulation.addEventListener('click', () => setActivePage('sim'));
+    if (navCells) navCells.addEventListener('click', () => setActivePage('cells'));
+    if (navEstimation) navEstimation.addEventListener('click', () => setActivePage('est'));
+    if (navBusiness) navBusiness.addEventListener('click', () => setActivePage('plans')); // Default to plans
+
+    if (subnavPlans) subnavPlans.addEventListener('click', () => setActivePage('plans'));
+    if (subnavCosts) subnavCosts.addEventListener('click', () => setActivePage('costs'));
+    if (subnavQuote) subnavQuote.addEventListener('click', () => setActivePage('quote'));
 
     function setActivePage(page) {
-        // Nav Buttons
-        [navSimulation, navCells, navEstimation, navPlans, navCosts, navQuote].forEach(b => b && b.classList.remove('active'));
+        // Main Nav Buttons
+        [navSimulation, navCells, navEstimation, navBusiness].forEach(b => b && b.classList.remove('active'));
+        // Sub-nav Buttons
+        [subnavPlans, subnavCosts, subnavQuote].forEach(b => b && b.classList.remove('active'));
 
         // Layout show/hide
         if (workspaceWrapper) workspaceWrapper.classList.add('hidden');
         if (estimationPage) estimationPage.classList.add('hidden');
+        if (businessView) businessView.classList.add('hidden');
         if (plansPage) plansPage.classList.add('hidden');
         if (costsPage) costsPage.classList.add('hidden');
         if (quotePage) quotePage.classList.add('hidden');
@@ -221,18 +229,24 @@ document.addEventListener('DOMContentLoaded', () => {
             navEstimation.classList.add('active');
             if (estimationPage) estimationPage.classList.remove('hidden');
             setTimeout(() => runEstimation(), 50);
-        } else if (page === 'plans') {
-            if (navPlans) navPlans.classList.add('active');
-            if (plansPage) plansPage.classList.remove('hidden');
-            setTimeout(() => renderPlansPage(), 50);
-        } else if (page === 'costs') {
-            navCosts.classList.add('active');
-            if (costsPage) costsPage.classList.remove('hidden');
-            setTimeout(() => runCosts(), 50);
-        } else if (page === 'quote') {
-            navQuote.classList.add('active');
-            if (quotePage) quotePage.classList.remove('hidden');
-            setTimeout(() => renderQuote(), 50);
+        } else {
+            // Business sections
+            if (navBusiness) navBusiness.classList.add('active');
+            if (businessView) businessView.classList.remove('hidden');
+
+            if (page === 'plans') {
+                if (subnavPlans) subnavPlans.classList.add('active');
+                if (plansPage) plansPage.classList.remove('hidden');
+                setTimeout(() => renderPlansPage(), 50);
+            } else if (page === 'costs') {
+                if (subnavCosts) subnavCosts.classList.add('active');
+                if (costsPage) costsPage.classList.remove('hidden');
+                setTimeout(() => runCosts(), 50);
+            } else if (page === 'quote') {
+                if (subnavQuote) subnavQuote.classList.add('active');
+                if (quotePage) quotePage.classList.remove('hidden');
+                setTimeout(() => renderQuote(), 50);
+            }
         }
     }
 
@@ -3553,6 +3567,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const wasteUnit = parseFloat(document.getElementById('cost-waste-unit')?.value) || 0;
         const tva = (parseFloat(document.getElementById('cost-tva')?.value) || 20) / 100;
 
+        // One-time setup costs (Split Coût vs Vente)
+        const expertBuy = parseFloat(document.getElementById('cost-expert-buy')?.value) || 0;
+        const expertSell = parseFloat(document.getElementById('cost-expert-sell')?.value) || 0;
+        const setupBuy = parseFloat(document.getElementById('cost-setup-buy')?.value) || 0;
+        const setupSell = parseFloat(document.getElementById('cost-setup-sell')?.value) || 0;
+        const trainingBuy = parseFloat(document.getElementById('cost-training-buy')?.value) || 0;
+        const trainingSell = parseFloat(document.getElementById('cost-training-sell')?.value) || 0;
+
+        const totalSetupInternal = expertBuy + setupBuy + trainingBuy;
+        const totalOneTimeClient = expertSell + setupSell + trainingSell;
+
         let selectedOpt = appConfigData?.subscriptions?.find(s => s.id === selectedPlanId);
         // Fallback
         if (!selectedOpt) {
@@ -3601,12 +3626,14 @@ document.addEventListener('DOMContentLoaded', () => {
             wasteYear1 = replacementPassages * (wasteFixed + (n * wasteUnit));
         }
 
-        const cdrTotal = cellPurchasesYear1 + shippingYear1 + installYear1 + travelYear1 + wasteYear1;
+        const cdrTotal = cellPurchasesYear1 + shippingYear1 + installYear1 + travelYear1 + wasteYear1 + totalSetupInternal;
 
         // ── Prix de vente (Facturation Client) ────────────────────────
         const sellMonth = n * monthlySubPrice;
         const sellYear = sellMonth * 12;
-        const totalHT = sellYear;
+
+        // Client pays setup fees based on "Sell" prices
+        const totalHT = sellYear + totalOneTimeClient;
         const totalTTC = totalHT * (1 + tva);
 
         // ── Marge & Rentabilité 1ère année ────────────────────────────
@@ -3638,6 +3665,7 @@ document.addEventListener('DOMContentLoaded', () => {
         set('cost-r-shipping', fmt(shippingYear1));
         set('cost-r-install', fmt(installYear1));
         set('cost-r-travel', fmt(travelYear1));
+        set('cost-r-setup', fmt(totalSetupInternal));
         set('cost-r-cdr', fmt(cdrTotal));
 
         set('cost-r-sell-month', fmt(sellMonth) + ' / mois');
@@ -3679,6 +3707,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (isPremium) {
                 addRow('🗑️', 'Collecte & Traitement', `${Math.max(0, totalPassagesYear1 - 1)} enlèvements = ${fmt(wasteYear1)}`);
             }
+            addRow('🚀', 'Frais Mise en service', `${fmt(totalSetupInternal)}`);
             addRow('🧾', 'Coût total estimé 1ère année', `${fmt(cdrTotal)}`, true);
 
             addSep('📈 Revenus Client');
@@ -3694,21 +3723,24 @@ document.addEventListener('DOMContentLoaded', () => {
             addRow('🏆', 'Marge Brute Récurrente', `${fmt(recurringMargin)} par an`, true);
         }
 
+        const projectName = document.getElementById('cost-project-name')?.value || '';
         // Save for quote use
         _lastCosts = {
             n, unitBuy, shipping, installU, travel,
+            expertSell, setupSell, trainingSell, totalOneTimeClient,
             collectFreq, wasteFixed, wasteUnit, tva,
             monthlySubPrice, subName, subDesc,
             cdrTotal, sellMonth, sellYear,
             totalHT, totalTTC, margin, marginPct, recurringMargin,
-            projectName: document.getElementById('cost-project-name')?.value || ''
+            projectName
         };
     }
 
     // Wire up all cost inputs to auto-recalc
     ['cost-num-cells', 'cost-unit-buy', 'cost-shipping', 'cost-install-unit',
         'cost-travel', 'cost-collect-freq', 'cost-waste-fixed', 'cost-waste-unit',
-        'cost-tva'].forEach(id => {
+        'cost-tva', 'cost-expert-buy', 'cost-expert-sell', 'cost-setup-buy',
+        'cost-setup-sell', 'cost-training-buy', 'cost-training-sell'].forEach(id => {
             const el = document.getElementById(id);
             if (el) {
                 el.addEventListener('input', runCosts);
@@ -3752,42 +3784,67 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const fmtQ = (n) => Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
 
-        if (el('quote-h-cells')) el('quote-h-cells').textContent = c.n;
-        if (el('quote-h-ttc')) el('quote-h-ttc').textContent = fmtQ(c.totalTTC);
-        if (el('quote-h-annual')) el('quote-h-annual').textContent = fmtQ(c.totalTTC); // Total year 1 is the same as recurring now, since it's subscription-based
+        if (el('quote-h-setup-total')) el('quote-h-setup-total').textContent = fmtQ(c.totalOneTimeClient * (1 + c.tva));
+        if (el('quote-h-monthly')) el('quote-h-monthly').textContent = fmtQ((c.sellMonth) * (1 + c.tva)) + ' / mois';
 
         // Table body
         const tbody = el('quote-table-body');
         const tfoot = el('quote-table-foot');
         if (!tbody) return;
 
-        const rows = [
-            {
-                label: `Abonnement : ${c.subName}`,
-                desc: c.subDesc,
-                qty: c.n,
-                puHT: c.monthlySubPrice * 12,
-                totalHT: c.sellYear,
-                isRecurring: true
-            }
-        ];
+        const rows = [];
 
-        tbody.innerHTML = rows.filter(r => !r.isIncluded).map(r => `
+        // 1. Initial costs
+        if (c.expertSell > 0) rows.push({ label: "Étude, Simulation & Expertise", desc: "Diagnostic hydrodynamique et plan d'implantation optimal", qty: 1, puHT: c.expertSell, totalHT: c.expertSell });
+        if (c.setupSell > 0) rows.push({ label: "Forfait Installation Initiale", desc: "Pose des premiers ancrages et mise en place de la barrière", qty: 1, puHT: c.setupSell, totalHT: c.setupSell });
+
+        // Formation condition: skip if Premium (~20€)
+        const isPremium = c.monthlySubPrice >= 20;
+        if (c.trainingSell > 0 && !isPremium) {
+            rows.push({ label: "Formation technique", desc: "Formation des agents municipaux à la collecte et sécurité", qty: 1, puHT: c.trainingSell, totalHT: c.trainingSell });
+        } else if (isPremium && c.trainingSell > 0) {
+            rows.push({ label: "Formation technique", desc: "Inclus dans le forfait Premium (Clé en main)", qty: 1, puHT: 0, totalHT: 0, isIncluded: true });
+        }
+
+        // 2. Subscription
+        rows.push({
+            label: `Abonnement Annuel : ${c.subName}`,
+            desc: c.subDesc,
+            qty: c.n,
+            puHT: c.monthlySubPrice * 12,
+            totalHT: c.sellYear,
+            isRecurring: true
+        });
+
+        tbody.innerHTML = rows.map(r => `
             <tr class="${r.isRecurring ? 'quote-row-recurring' : ''}">
                 <td>
                     <div class="quote-row-label">${r.label}${r.isRecurring ? ' <span class="quote-recurring-badge">engagement 1 an</span>' : ''}</div>
                     <div class="quote-row-desc">${r.desc}</div>
                 </td>
                 <td class="quote-td-num">${r.qty}</td>
-                <td class="quote-td-num">${r.qty > 0 && r.puHT > 0 ? fmtQ(r.puHT) + ' / an' : '—'}</td>
+                <td class="quote-td-num">${r.qty > 0 && r.puHT > 0 ? fmtQ(r.puHT) + (r.isRecurring ? ' / an' : '') : '—'}</td>
                 <td class="quote-td-num quote-td-total">${fmtQ(r.totalHT)}</td>
             </tr>
         `).join('');
 
         const tvaAmount = c.totalHT * c.tva;
+
+        const totalSetupTTC = c.totalOneTimeClient * (1 + c.tva);
+        const totalRecurringYearTTC = c.sellYear * (1 + c.tva);
+        const totalMonthTTC = (c.sellMonth) * (1 + c.tva);
+
         tfoot.innerHTML = `
             <tr class="quote-foot-sub">
-                <td colspan="3">Total HT annuel</td>
+                <td colspan="3">Frais de mise en service (HT)</td>
+                <td class="quote-td-num">${fmtQ(c.totalOneTimeClient)}</td>
+            </tr>
+            <tr class="quote-foot-sub">
+                <td colspan="3">Abonnement Annuel (HT)</td>
+                <td class="quote-td-num">${fmtQ(c.sellYear)}</td>
+            </tr>
+            <tr class="quote-foot-sub" style="border-top: 2px solid var(--clr-border);">
+                <td colspan="3">Total HT cumulé (An 1)</td>
                 <td class="quote-td-num">${fmtQ(c.totalHT)}</td>
             </tr>
             <tr class="quote-foot-sub">
@@ -3795,11 +3852,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td class="quote-td-num">${fmtQ(tvaAmount)}</td>
             </tr>
             <tr class="quote-foot-total">
-                <td colspan="3">TOTAL TTC (Mensuel)</td>
-                <td class="quote-td-num">${fmtQ(c.totalTTC / 12)} / mois</td>
+                <td colspan="3">TOTAL À RÉGLER (Année 1) TTC</td>
+                <td class="quote-td-num">${fmtQ(c.totalTTC)}</td>
             </tr>
             <tr class="quote-foot-note">
-                <td colspan="4">⟳ Coût total annuel TTC : ${fmtQ(c.totalTTC)} / an</td>
+                <td colspan="4" style="text-align:right; padding-top:15px; border:none;">
+                    <div style="font-size:1.1rem; color:var(--clr-primary); font-weight:700;">
+                        Soit ${fmtQ(totalMonthTTC)} TTC / mois
+                    </div>
+                    <div style="font-size:0.85rem; color:var(--clr-text-muted);">
+                        + ${fmtQ(totalSetupTTC)} TTC d'investissement initial
+                    </div>
+                </td>
             </tr>
         `;
     }

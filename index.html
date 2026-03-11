@@ -28,9 +28,7 @@
                     <button id="nav-simulation" class="page-nav-btn active">🗺️ Simulation</button>
                     <button id="nav-cells" class="page-nav-btn">🔲 Cellules</button>
                     <button id="nav-estimation" class="page-nav-btn">📊 Estimation</button>
-                    <button id="nav-plans" class="page-nav-btn">🛒 Forfaits</button>
-                    <button id="nav-costs" class="page-nav-btn">💰 Coûts</button>
-                    <button id="nav-quote" class="page-nav-btn">📄 Devis Client</button>
+                    <button id="nav-business" class="page-nav-btn">💼 Business</button>
                 </nav>
             </div>
 
@@ -620,260 +618,342 @@
         </div>
 
         <!-- ═══════════════════════════════════════════════════════════ -->
-        <!-- PLANS PAGE (FORFAITS)                                       -->
+        <!-- BUSINESS & SALES SECTION                                    -->
         <!-- ═══════════════════════════════════════════════════════════ -->
-        <div id="plans-page" class="plans-page hidden">
-            <div class="plans-header-card">
-                <h2>🛒 Choix du Forfait</h2>
-                <div class="plans-recommendation">
-                    <span class="pr-icon">🎯</span>
-                    <span>Analyse prédictive : <strong id="plans-rec-val" style="color:var(--clr-primary);">—</strong>
-                        cellules recommandées.</span>
-                    <span id="plans-rec-range"
-                        style="font-size:0.85rem; color:var(--clr-text-muted); margin-left: 6px;"></span>
-                </div>
+        <div id="business-view" class="business-view hidden">
+            <!-- Sub-navigation for Business -->
+            <div class="sub-nav-wrapper">
+                <nav class="sub-nav">
+                    <button id="subnav-plans" class="sub-nav-btn active">🛒 Forfaits</button>
+                    <button id="subnav-costs" class="sub-nav-btn">💼 Rentabilité</button>
+                    <button id="subnav-quote" class="sub-nav-btn">📄 Devis Client</button>
+                </nav>
             </div>
 
-            <div class="plans-grid" id="plans-grid">
-                <!-- Cards injected here by JS -->
-            </div>
-        </div>
-
-        <!-- ═══════════════════════════════════════════════════════════ -->
-        <!-- INTERNAL COSTS PAGE                                         -->
-        <!-- ═══════════════════════════════════════════════════════════ -->
-        <div id="costs-page" class="costs-page hidden">
-
-            <div class="costs-header">
-                <div>
-                    <h2>💰 Coûts internes du projet</h2>
-                    <p>Gestion des coûts, marges et rentabilité — usage interne uniquement</p>
-                </div>
-                <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
-                    <button id="btn-copy-to-quote" class="btn-primary" style="padding:8px 18px; font-size:0.85rem;">
-                        📄 Générer le devis client
-                    </button>
-                </div>
-            </div>
-
-            <div class="costs-body">
-
-                <!-- LEFT: Paramètres projet -->
-                <div class="est-card costs-card">
-                    <div class="est-card-title">⚙️ Paramètres projet</div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Nom du projet / Port</label>
-                        <input type="text" id="cost-project-name" class="est-input" placeholder="Ex : Port de Narbonne"
-                            value="">
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Nombre de cellules <span class="est-unit">(auto depuis
-                                estimation)</span></label>
-                        <input type="number" id="cost-num-cells" class="est-input" min="1" value="1">
-                        <small>Modifiable manuellement</small>
-                    </div>
-
-                    <div class="sidebar-divider"></div>
-                    <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">📦 Coûts d'achat</div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Prix d'achat unitaire cellule (HT) <span
-                                class="est-unit">(€)</span></label>
-                        <input type="number" id="cost-unit-buy" class="est-input" min="0" step="0.01" value="150">
-                        <small>Prix fournisseur par cellule filtrante</small>
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Frais de livraison / logistique (HT) <span class="est-unit">(€
-                                total)</span></label>
-                        <input type="number" id="cost-shipping" class="est-input" min="0" step="1" value="200">
-                        <small>Transport, douane, emballage…</small>
-                    </div>
-
-                    <div class="sidebar-divider"></div>
-                    <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">🔧 Pose & Installation
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Coût installation unitaire (HT) <span class="est-unit">(€ /
-                                cellule)</span></label>
-                        <input type="number" id="cost-install-unit" class="est-input" min="0" step="1" value="80">
-                        <small>Main d'œuvre pose par cellule</small>
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Coût déplacement / forfait chantier (HT) <span
-                                class="est-unit">(€)</span></label>
-                        <input type="number" id="cost-travel" class="est-input" min="0" step="1" value="300">
-                        <small>Frais fixes de mission</small>
-                    </div>
-
-                    <div class="sidebar-divider"></div>
-                    <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">🔄 Maintenance & Collecte
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Fréquence de collecte <span class="est-unit">(fois / an)</span></label>
-                        <input type="number" id="cost-collect-freq" class="est-input" min="1" step="1" value="2">
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Coût fixe déplacement déchets <span class="est-unit">(€ /
-                                passage)</span></label>
-                        <input type="number" id="cost-waste-fixed" class="est-input" min="0" step="10" value="150">
-                        <small>Frais fixes par passage</small>
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Coût traitement unitaire (HT) <span class="est-unit">(€ /
-                                cellule)</span></label>
-                        <input type="number" id="cost-waste-unit" class="est-input" min="0" step="0.5" value="2">
-                        <small>Traitement déchets hydrocarbures par cellule</small>
-                    </div>
-
-                    <div class="sidebar-divider"></div>
-                    <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">💎 Abonnement Client</div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">Formule choisie</label>
-                        <div id="active-plan-display"
-                            style="font-weight:bold; color:var(--clr-primary); margin-bottom: 5px; padding: 6px; background: var(--clr-surface-hover); border-radius: 6px;">
-                            Premium - Clé en main</div>
-                        <small id="cost-sub-desc">Service complet client déchargé : livraison, pose, remplacement
-                            régulier et traitement écologique des déchets.</small>
-                        <button id="btn-change-plan" class="btn-secondary"
-                            style="margin-top: 10px; width: 100%; font-size: 0.8rem; padding: 6px;">Changer de
-                            Forfait</button>
-                    </div>
-
-                    <div class="est-param-group">
-                        <label class="est-label">TVA <span class="est-unit">(%)</span></label>
-                        <input type="number" id="cost-tva" class="est-input" min="0" max="30" step="0.5" value="20">
-                    </div>
-
-                </div>
-
-                <!-- CENTER: Récap financier interne -->
-                <div class="est-card costs-card-center">
-                    <div class="est-card-title">📊 Récapitulatif financier</div>
-
-                    <div class="costs-section-title">💰 Coût de revient</div>
-
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">📦</div>
-                            <div class="est-metric-label">Achat cellules (HT)</div>
+            <div class="business-content-wrapper">
+                <!-- 1. PLANS PAGE (FORFAITS) -->
+                <div id="plans-page" class="plans-page">
+                    <div class="plans-header-card">
+                        <h2>🛒 Choix du Forfait</h2>
+                        <div class="plans-recommendation">
+                            <span class="pr-icon">🎯</span>
+                            <span>Analyse prédictive : <strong id="plans-rec-val"
+                                    style="color:var(--clr-primary);">—</strong>
+                                cellules recommandées.</span>
+                            <span id="plans-rec-range"
+                                style="font-size:0.85rem; color:var(--clr-text-muted); margin-left: 6px;"></span>
                         </div>
-                        <div class="est-metric-value" id="cost-r-buy">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">🚚</div>
-                            <div class="est-metric-label">Livraison (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-shipping">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">🔧</div>
-                            <div class="est-metric-label">Installation (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-install">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">✈️</div>
-                            <div class="est-metric-label">Déplacement (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-travel">—</div>
-                    </div>
-                    <div class="est-metric est-metric-highlight">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">🧾</div>
-                            <div class="est-metric-label">Coût de revient total (HT)</div>
-                        </div>
-                        <div class="est-metric-value est-metric-big" id="cost-r-cdr">—</div>
                     </div>
 
-                    <div class="est-separator"></div>
-                    <div class="costs-section-title">📈 Prix de vente (Facturation Client)</div>
-
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">�</div>
-                            <div class="est-metric-label">Abonnement mensuel total (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-sell-month">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">📆</div>
-                            <div class="est-metric-label">Abonnement annuel (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-sell-year">—</div>
-                    </div>
-                    <div class="est-metric est-metric-highlight">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">💵</div>
-                            <div class="est-metric-label">Total facturé première année (HT)</div>
-                        </div>
-                        <div class="est-metric-value est-metric-big" id="cost-r-total-ht">—</div>
-                    </div>
-                    <div class="est-metric est-metric-final">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">🏆</div>
-                            <div class="est-metric-label">Total TTC (client paie / an)</div>
-                        </div>
-                        <div class="est-metric-value est-metric-big est-metric-green" id="cost-r-total-ttc">—</div>
-                    </div>
-
-                    <div class="est-separator"></div>
-                    <div class="costs-section-title">💡 Marge & Rentabilité (1ère année)</div>
-
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">📊</div>
-                            <div class="est-metric-label">Marge brute (HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-margin">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">%</div>
-                            <div class="est-metric-label">Taux de marge</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-margin-pct">—</div>
-                    </div>
-                    <div class="est-metric">
-                        <div class="est-metric-left">
-                            <div class="est-metric-icon">🔄</div>
-                            <div class="est-metric-label">Marge récurrente (années suv. HT)</div>
-                        </div>
-                        <div class="est-metric-value" id="cost-r-recurring">—</div>
+                    <div class="plans-grid" id="plans-grid">
+                        <!-- Cards injected here by JS -->
                     </div>
                 </div>
 
-                <!-- RIGHT: Tableau par zone -->
-                <div class="est-card costs-card">
-                    <div class="est-card-title">🗂️ Détail & Hypothèses</div>
-                    <div id="cost-breakdown">
-                        <div class="est-placeholder">
-                            <div class="est-placeholder-icon">💰</div>
-                            <p>Renseignez les paramètres<br>pour voir le détail</p>
+                <!-- 2. INTERNAL COSTS PAGE -->
+                <div id="costs-page" class="costs-page hidden">
+                    <div class="costs-header">
+                        <div>
+                            <h2>💼 Pilotage Business & Rentabilité</h2>
+                            <p>Gestion des coûts internes, marges et rentabilité du projet</p>
                         </div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-shrink:0;">
+                            <button id="btn-copy-to-quote" class="btn-primary"
+                                style="padding:8px 18px; font-size:0.85rem;">
+                                📄 Générer le devis client
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="costs-body">
+
+                        <!-- LEFT: Paramètres projet -->
+                        <div class="est-card costs-card">
+                            <div class="est-card-title">⚙️ Paramètres projet</div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Nom du projet / Port</label>
+                                <input type="text" id="cost-project-name" class="est-input"
+                                    placeholder="Ex : Port de Narbonne" value="">
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Nombre de cellules <span class="est-unit">(auto depuis
+                                        estimation)</span></label>
+                                <input type="number" id="cost-num-cells" class="est-input" min="1" value="1">
+                                <small>Modifiable manuellement</small>
+                            </div>
+
+                            <div class="sidebar-divider"></div>
+                            <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">🚀 Mise en service
+                                (Initial)</div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Étude & Expertise (diagnostic, simulation)</label>
+                                <div class="cost-price-grid">
+                                    <div>
+                                        <small>Coût Interne (HT)</small>
+                                        <input type="number" id="cost-expert-buy" class="est-input" min="0" step="100"
+                                            value="800">
+                                    </div>
+                                    <div>
+                                        <small>Facturé Client (HT)</small>
+                                        <input type="number" id="cost-expert-sell" class="est-input" min="0" step="100"
+                                            value="1500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Forfait 1ère Pose (installation ancrages)</label>
+                                <div class="cost-price-grid">
+                                    <div>
+                                        <small>Coût Interne (HT)</small>
+                                        <input type="number" id="cost-setup-buy" class="est-input" min="0" step="100"
+                                            value="400">
+                                    </div>
+                                    <div>
+                                        <small>Facturé Client (HT)</small>
+                                        <input type="number" id="cost-setup-sell" class="est-input" min="0" step="100"
+                                            value="800">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Formation employés (sécurité & collecte)</label>
+                                <div class="cost-price-grid">
+                                    <div>
+                                        <small>Coût Interne (HT)</small>
+                                        <input type="number" id="cost-training-buy" class="est-input" min="0" step="100"
+                                            value="200">
+                                    </div>
+                                    <div>
+                                        <small>Facturé Client (HT)</small>
+                                        <input type="number" id="cost-training-sell" class="est-input" min="0"
+                                            step="100" value="500">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="sidebar-divider"></div>
+                            <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">📦 Coûts d'achat
+                                (Matériel)</div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Prix d'achat unitaire cellule (HT) <span
+                                        class="est-unit">(€)</span></label>
+                                <input type="number" id="cost-unit-buy" class="est-input" min="0" step="0.01"
+                                    value="150">
+                                <small>Prix fournisseur par cellule filtrante</small>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Frais de livraison total (HT) <span
+                                        class="est-unit">(€)</span></label>
+                                <input type="number" id="cost-shipping" class="est-input" min="0" step="1" value="200">
+                            </div>
+
+                            <div class="sidebar-divider"></div>
+                            <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">🔧 Pose &
+                                Installation
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Coût installation unitaire (HT) <span class="est-unit">(€ /
+                                        cellule)</span></label>
+                                <input type="number" id="cost-install-unit" class="est-input" min="0" step="1"
+                                    value="80">
+                                <small>Main d'œuvre pose par cellule</small>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Coût déplacement / forfait chantier (HT) <span
+                                        class="est-unit">(€)</span></label>
+                                <input type="number" id="cost-travel" class="est-input" min="0" step="1" value="300">
+                                <small>Frais fixes de mission</small>
+                            </div>
+
+                            <div class="sidebar-divider"></div>
+                            <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">🔄 Maintenance &
+                                Collecte
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Fréquence de collecte <span class="est-unit">(fois /
+                                        an)</span></label>
+                                <input type="number" id="cost-collect-freq" class="est-input" min="1" step="1"
+                                    value="2">
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Coût fixe déplacement déchets <span class="est-unit">(€ /
+                                        passage)</span></label>
+                                <input type="number" id="cost-waste-fixed" class="est-input" min="0" step="10"
+                                    value="150">
+                                <small>Frais fixes par passage</small>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Coût traitement unitaire (HT) <span class="est-unit">(€ /
+                                        cellule)</span></label>
+                                <input type="number" id="cost-waste-unit" class="est-input" min="0" step="0.5"
+                                    value="2">
+                                <small>Traitement déchets hydrocarbures par cellule</small>
+                            </div>
+
+                            <div class="sidebar-divider"></div>
+                            <div class="est-card-title" style="font-size:0.8rem; padding-bottom:8px;">💎 Abonnement
+                                Client</div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">Formule choisie</label>
+                                <div id="active-plan-display"
+                                    style="font-weight:bold; color:var(--clr-primary); margin-bottom: 5px; padding: 6px; background: var(--clr-surface-hover); border-radius: 6px;">
+                                    Premium - Clé en main</div>
+                                <small id="cost-sub-desc">Service complet client déchargé : livraison, pose,
+                                    remplacement
+                                    régulier et traitement écologique des déchets.</small>
+                                <button id="btn-change-plan" class="btn-secondary"
+                                    style="margin-top: 10px; width: 100%; font-size: 0.8rem; padding: 6px;">Changer de
+                                    Forfait</button>
+                            </div>
+
+                            <div class="est-param-group">
+                                <label class="est-label">TVA <span class="est-unit">(%)</span></label>
+                                <input type="number" id="cost-tva" class="est-input" min="0" max="30" step="0.5"
+                                    value="20">
+                            </div>
+
+                        </div>
+
+                        <!-- CENTER: Récap financier interne -->
+                        <div class="est-card costs-card-center">
+                            <div class="est-card-title">📊 Récapitulatif financier</div>
+
+                            <div class="costs-section-title">💰 Coût de revient</div>
+
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">📦</div>
+                                    <div class="est-metric-label">Achat cellules (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-buy">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🚚</div>
+                                    <div class="est-metric-label">Livraison (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-shipping">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🔧</div>
+                                    <div class="est-metric-label">Installation (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-install">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">✈️</div>
+                                    <div class="est-metric-label">Déplacement (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-travel">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🚀</div>
+                                    <div class="est-metric-label">Mise en service (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-setup">—</div>
+                            </div>
+                            <div class="est-metric est-metric-highlight">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🧾</div>
+                                    <div class="est-metric-label">Investissement Initial total (HT)</div>
+                                </div>
+                                <div class="est-metric-value est-metric-big" id="cost-r-cdr">—</div>
+                            </div>
+
+                            <div class="est-separator"></div>
+                            <div class="costs-section-title">📈 Prix de vente (Facturation Client)</div>
+
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">�</div>
+                                    <div class="est-metric-label">Abonnement mensuel total (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-sell-month">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">📆</div>
+                                    <div class="est-metric-label">Abonnement annuel (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-sell-year">—</div>
+                            </div>
+                            <div class="est-metric est-metric-highlight">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">💵</div>
+                                    <div class="est-metric-label">Total facturé première année (HT)</div>
+                                </div>
+                                <div class="est-metric-value est-metric-big" id="cost-r-total-ht">—</div>
+                            </div>
+                            <div class="est-metric est-metric-final">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🏆</div>
+                                    <div class="est-metric-label">Total TTC (client paie / an)</div>
+                                </div>
+                                <div class="est-metric-value est-metric-big est-metric-green" id="cost-r-total-ttc">—
+                                </div>
+                            </div>
+
+                            <div class="est-separator"></div>
+                            <div class="costs-section-title">💡 Marge & Rentabilité (1ère année)</div>
+
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">📊</div>
+                                    <div class="est-metric-label">Marge brute (HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-margin">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">%</div>
+                                    <div class="est-metric-label">Taux de marge</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-margin-pct">—</div>
+                            </div>
+                            <div class="est-metric">
+                                <div class="est-metric-left">
+                                    <div class="est-metric-icon">🔄</div>
+                                    <div class="est-metric-label">Marge récurrente (années suv. HT)</div>
+                                </div>
+                                <div class="est-metric-value" id="cost-r-recurring">—</div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: Tableau par zone -->
+                        <div class="est-card costs-card">
+                            <div class="est-card-title">🗂️ Détail & Hypothèses</div>
+                            <div id="cost-breakdown">
+                                <div class="est-placeholder">
+                                    <div class="est-placeholder-icon">💰</div>
+                                    <p>Renseignez les paramètres<br>pour voir le détail</p>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
 
-            </div>
-        </div>
+            </div> <!-- closing costs-body -->
+        </div> <!-- closing costs-page -->
 
-        <!-- ═══════════════════════════════════════════════════════════ -->
-        <!-- CLIENT QUOTE PAGE                                           -->
-        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- 3. CLIENT QUOTE PAGE -->
         <div id="quote-page" class="quote-page hidden">
-
             <div class="costs-header">
                 <div>
                     <h2>📄 Devis client</h2>
@@ -887,8 +967,7 @@
             </div>
 
             <div class="quote-body" id="quote-printable">
-
-                <!-- HEADER QUOTE CARD -->
+                <!-- Hero header -->
                 <div class="quote-hero-card">
                     <div class="quote-hero-left">
                         <div class="quote-badge-title">PROPOSITION COMMERCIALE</div>
@@ -898,21 +977,19 @@
                             maintenance de cellules filtrantes absorbantes pour la protection du milieu marin portuaire.
                         </p>
                     </div>
-                    <div class="quote-hero-right">
+                    <div class="quote-hero-right" style="gap: 15px;">
                         <div class="quote-hero-stat">
-                            <div class="quote-hero-stat-value" id="quote-h-cells">—</div>
-                            <div class="quote-hero-stat-label">cellules filtrantes</div>
+                            <div class="quote-hero-stat-value" id="quote-h-setup-total">—</div>
+                            <div class="quote-hero-stat-label">investissement initial</div>
                         </div>
                         <div class="quote-hero-stat">
-                            <div class="quote-hero-stat-value" id="quote-h-ttc">—</div>
-                            <div class="quote-hero-stat-label">invest. 1ère année TTC</div>
-                        </div>
-                        <div class="quote-hero-stat">
-                            <div class="quote-hero-stat-value" id="quote-h-annual">—</div>
-                            <div class="quote-hero-stat-label">abonnement annuel TTC</div>
+                            <div class="quote-hero-stat-value" id="quote-h-monthly">—</div>
+                            <div class="quote-hero-stat-label">mensualité abonnement</div>
                         </div>
                     </div>
                 </div>
+
+                <!-- ... Rest of table ... -->
 
                 <!-- QUOTE LINES TABLE -->
                 <div class="est-card quote-table-card">
@@ -972,10 +1049,10 @@
                     <span id="quote-legal-date"></span>
                 </div>
 
-            </div>
-        </div>
+            </div> <!-- closing business-content-wrapper -->
+        </div> <!-- closing business-view -->
 
-    </div>
+    </div> <!-- closing app-container -->
 
     <!-- JavaScript logic -->
     <script src="polybool.min.js"></script>

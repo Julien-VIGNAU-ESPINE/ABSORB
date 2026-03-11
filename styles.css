@@ -75,6 +75,99 @@ body {
 
 
 /* Top Header - Glassmorphism */
+/* Financial / Business Sub-navigation */
+.sub-nav-wrapper {
+    background: var(--clr-surface);
+    border-bottom: 1px solid var(--clr-border);
+    padding: 0 40px;
+    display: flex;
+    justify-content: center;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.sub-nav {
+    display: flex;
+    gap: 40px;
+}
+
+.sub-nav-btn {
+    background: none;
+    border: none;
+    padding: 16px 0;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--clr-text-muted);
+    cursor: pointer;
+    position: relative;
+    transition: all 0.2s;
+}
+
+.sub-nav-btn:hover {
+    color: var(--clr-text);
+}
+
+.sub-nav-btn.active {
+    color: var(--clr-primary);
+    font-weight: 600;
+}
+
+.sub-nav-btn.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background: var(--clr-primary);
+    border-top-left-radius: 3px;
+    border-top-right-radius: 3px;
+}
+
+/* Tri-state Toggle */
+.state-btn.active {
+    pointer-events: none;
+}
+
+.state-btn:not(.active):hover {
+    background: var(--clr-surface-hover) !important;
+    color: var(--clr-text) !important;
+}
+
+/* Business View Layout & Scrolling */
+.business-view {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.business-content-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 4px 40px 4px;
+    /* Slight padding for scrollbar */
+}
+
+/* Dual Cost/Price Grid */
+.cost-price-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.cost-price-grid small {
+    display: block;
+    font-size: 0.65rem;
+    color: var(--clr-text-muted);
+    margin-bottom: 2px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
 .glass-header {
     background: var(--clr-surface);
     backdrop-filter: var(--glass-blur);
@@ -959,9 +1052,7 @@ canvas {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    width: 100%;
 }
 
 .costs-header {
@@ -992,18 +1083,17 @@ canvas {
 
 .costs-body {
     display: grid;
-    grid-template-columns: 300px 1fr 280px;
+    grid-template-columns: 320px 1fr 300px;
     gap: 16px;
-    flex: 1;
-    min-height: 0;
+    width: 100%;
 }
 
 .costs-card {
-    overflow-y: auto;
+    height: auto;
 }
 
 .costs-card-center {
-    overflow-y: auto;
+    height: auto;
 }
 
 .costs-section-title {
@@ -1030,9 +1120,7 @@ canvas {
     display: flex;
     flex-direction: column;
     gap: 16px;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
+    width: 100%;
 }
 
 /* Hero card */
@@ -1291,12 +1379,11 @@ canvas {
 .plans-page {
     display: flex;
     flex-direction: column;
-    height: 100%;
-    padding: 24px;
+    padding: 24px 0;
     gap: 30px;
     align-items: center;
     background: transparent;
-    overflow-y: auto;
+    width: 100%;
 }
 
 .plans-header-card {
