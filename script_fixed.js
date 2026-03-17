@@ -1,4 +1,4 @@
-document.addEventListener('DOMContentLoaded', () => {
+﻿document.addEventListener('DOMContentLoaded', () => {
     // UI Elements
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('file-input');
@@ -30,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const cbCoastHeatmap = document.getElementById('cb-coast-heatmap');
     const cbShowHeatmap = document.getElementById('cb-show-heatmap');
     const cbCumulativeHeatmap = document.getElementById('cb-cumulative-heatmap');
-    const cbShowBoatImpact = document.getElementById('cb-show-boat-impact');
     const simSpeedInput = document.getElementById('sim-speed');
     const simSpeedNum = document.getElementById('sim-speed-num');
 
@@ -187,7 +186,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Sub-nav buttons inside Business
     const subnavPlans = document.getElementById('subnav-plans');
     const subnavCosts = document.getElementById('subnav-costs');
+    const subnavMaterials = document.getElementById('subnav-materials');
     const subnavQuote = document.getElementById('subnav-quote');
+
+    const materialsPage = document.getElementById('materials-page');
 
     if (navSimulation) navSimulation.addEventListener('click', () => setActivePage('sim'));
     if (navCells) navCells.addEventListener('click', () => setActivePage('cells'));
@@ -196,13 +198,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (subnavPlans) subnavPlans.addEventListener('click', () => setActivePage('plans'));
     if (subnavCosts) subnavCosts.addEventListener('click', () => setActivePage('costs'));
+    if (subnavMaterials) subnavMaterials.addEventListener('click', () => setActivePage('materials'));
     if (subnavQuote) subnavQuote.addEventListener('click', () => setActivePage('quote'));
 
     function setActivePage(page) {
         // Main Nav Buttons
         [navSimulation, navCells, navEstimation, navBusiness].forEach(b => b && b.classList.remove('active'));
         // Sub-nav Buttons
-        [subnavPlans, subnavCosts, subnavQuote].forEach(b => b && b.classList.remove('active'));
+        [subnavPlans, subnavCosts, subnavMaterials, subnavQuote].forEach(b => b && b.classList.remove('active'));
 
         // Layout show/hide
         if (workspaceWrapper) workspaceWrapper.classList.add('hidden');
@@ -210,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (businessView) businessView.classList.add('hidden');
         if (plansPage) plansPage.classList.add('hidden');
         if (costsPage) costsPage.classList.add('hidden');
+        if (materialsPage) materialsPage.classList.add('hidden');
         if (quotePage) quotePage.classList.add('hidden');
         if (sidebarPanel) sidebarPanel.classList.add('hidden');
         if (cellsSidebarPanel) cellsSidebarPanel.classList.add('hidden');
@@ -243,6 +247,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (subnavCosts) subnavCosts.classList.add('active');
                 if (costsPage) costsPage.classList.remove('hidden');
                 setTimeout(() => runCosts(), 50);
+            } else if (page === 'materials') {
+                if (subnavMaterials) subnavMaterials.classList.add('active');
+                if (materialsPage) materialsPage.classList.remove('hidden');
+                setTimeout(() => renderMaterialsPage(), 50);
             } else if (page === 'quote') {
                 if (subnavQuote) subnavQuote.classList.add('active');
                 if (quotePage) quotePage.classList.remove('hidden');
@@ -313,12 +321,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderCanvas();
     });
-    if (cbShowBoatImpact) cbShowBoatImpact.addEventListener('change', () => {
-        if (!simulationInterval && pollutionState.density) {
-            runPollutionSimulation();
-        }
-        renderCanvas();
-    });
 
     // Sub-tabs Simulation
     const btnSubTabWater = document.getElementById('btn-sub-tab-water');
@@ -348,6 +350,15 @@ document.addEventListener('DOMContentLoaded', () => {
             simPanelWater.classList.add('hidden');
         };
     }
+
+    // --- Materials Event Listeners ---
+    const matNumCells = document.getElementById('mat-num-cells');
+    const matNumSections = document.getElementById('mat-num-sections');
+    if (matNumCells) matNumCells.addEventListener('input', () => {
+        matNumCells._manuallyEdited = true;
+        renderMaterialsPage();
+    });
+    if (matNumSections) matNumSections.addEventListener('input', renderMaterialsPage);
 
     if (cbShowHeatmap) cbShowHeatmap.addEventListener('change', () => {
         if (!simulationInterval && pollutionState.density) {
@@ -410,7 +421,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cbCoastHeatmap && data.adjustments.coastHeatmap !== undefined) cbCoastHeatmap.checked = data.adjustments.coastHeatmap;
                     if (cbShowHeatmap && data.adjustments.showHeatmap !== undefined) cbShowHeatmap.checked = data.adjustments.showHeatmap;
                     if (cbCumulativeHeatmap && data.adjustments.cumulativeHeatmap !== undefined) cbCumulativeHeatmap.checked = data.adjustments.cumulativeHeatmap;
-                    if (cbShowBoatImpact && data.adjustments.showBoatImpact !== undefined) cbShowBoatImpact.checked = data.adjustments.showBoatImpact;
                     if (simSpeedInput && data.adjustments.simSpeed !== undefined) {
                         simSpeedInput.value = data.adjustments.simSpeed;
                         if (simSpeedNum) simSpeedNum.value = data.adjustments.simSpeed;
@@ -486,7 +496,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     coastHeatmap: cbCoastHeatmap ? cbCoastHeatmap.checked : false,
                     showHeatmap: cbShowHeatmap ? cbShowHeatmap.checked : true,
                     cumulativeHeatmap: cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false,
-                    showBoatImpact: cbShowBoatImpact ? cbShowBoatImpact.checked : true,
                     simSpeed: simSpeedInput ? simSpeedInput.value : "1"
                 },
                 pixelsPerMeter: rulerState.pixelsPerMeter,
@@ -2307,13 +2316,15 @@ document.addEventListener('DOMContentLoaded', () => {
         offCtx.fillRect(0, 0, cols, rows);
         offCtx.scale(1 / cellSize, 1 / cellSize);
 
-        // 1. Navigable zones (Eau, Bateaux) = White
+        // 1. Les zones explicitement définies comme 'Eau' sont navigables (espace de propagation)
         zones.forEach(zone => {
-            if (zone.type === 'eau' || zone.type === 'bateaux') {
+            if (zone.type === 'eau') {
                 offCtx.beginPath();
                 if (zone.points.length > 0) {
                     offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
                 }
                 offCtx.closePath();
                 offCtx.fillStyle = '#ffffff'; // White = Walkable
@@ -2321,13 +2332,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 2. Obstacles (Terre, Ponton, etc) = Black
+        // 2. Les autres zones (terre, bateaux, pontons) bloquent l'eau (obstacles dans l'eau)
         zones.forEach(zone => {
-            if (zone.type !== 'eau' && zone.type !== 'bateaux') {
+            if (zone.type !== 'eau') {
                 offCtx.beginPath();
                 if (zone.points.length > 0) {
                     offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
                 }
                 offCtx.closePath();
                 offCtx.fillStyle = '#000000'; // Black = Obstacle
@@ -2616,17 +2629,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const offCtx = offCanvas.getContext('2d', { willReadFrequently: true });
 
         // Draw obstacles mask
-        offCtx.fillStyle = '#000000'; // Black = Obstacle by default
+        offCtx.fillStyle = '#000000';
         offCtx.fillRect(0, 0, cols, rows);
         offCtx.scale(1 / cellSize, 1 / cellSize);
 
-        // 1. Navigable zones (Eau, Polluante) = White
+        // 1. Les zones explicitement définies comme 'Eau' ou 'Polluante' sont navigables
         zones.forEach(zone => {
             if (zone.type === 'eau' || zone.type === 'polluante') {
                 offCtx.beginPath();
                 if (zone.points.length > 0) {
                     offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
                 }
                 offCtx.closePath();
                 offCtx.fillStyle = '#ffffff';
@@ -2634,13 +2649,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 2. Non-boat obstacles (Terre, Ponton, etc) = Black
+        // 2. Les autres zones bloquent l'eau
         zones.forEach(zone => {
-            if (zone.type !== 'eau' && zone.type !== 'polluante' && zone.type !== 'bateaux') {
+            if (zone.type !== 'eau' && zone.type !== 'polluante') {
                 offCtx.beginPath();
                 if (zone.points.length > 0) {
                     offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    for (let i = 1; i < zone.points.length; i++) {
+                        offCtx.lineTo(zone.points[i].x, zone.points[i].y);
+                    }
                 }
                 offCtx.closePath();
                 offCtx.fillStyle = '#000000';
@@ -2648,40 +2665,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // 3. Boat zones = Red (Impact target but navigable for propagation)
-        zones.forEach(zone => {
-            if (zone.type === 'bateaux') {
-                offCtx.beginPath();
-                if (zone.points.length > 0) {
-                    offCtx.moveTo(zone.points[0].x, zone.points[0].y);
-                    for (let i = 1; i < zone.points.length; i++) offCtx.lineTo(zone.points[i].x, zone.points[i].y);
-                }
-                offCtx.closePath();
-                offCtx.fillStyle = '#ff0000';
-                offCtx.fill();
-            }
-        });
-
         const maskData = offCtx.getImageData(0, 0, cols, rows).data;
-        const boatMask = new Uint8Array(numCells);
         for (let i = 0; i < numCells; i++) {
-            const r = maskData[i * 4];
-            const g = maskData[i * 4 + 1];
-            const b = maskData[i * 4 + 2];
-
-            const isReddish = r > g && r > b && r > 10;
-            const isWhite = r > 200 && g > 200 && b > 200;
-
-            if (isReddish) {
-                boatMask[i] = 1;
-                obstacles[i] = 0; // Navigable
-            } else if (isWhite) {
-                obstacles[i] = 0; // Water/Polluante
-            } else {
-                obstacles[i] = 1; // Real obstacle (land/ponton)
+            if (maskData[i * 4] < 128) {
+                obstacles[i] = 1;
             }
         }
-        pollutionState.boatMask = boatMask;
 
         // Generate source areas per-zone so each zone can have its own intensity
         zones.forEach(zone => {
@@ -3009,18 +2998,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isPersistent = cbPersistImpact && cbPersistImpact.checked;
         const useCoastHeatmap = cbCoastHeatmap && cbCoastHeatmap.checked;
-        const showBoatImpact = cbShowBoatImpact ? cbShowBoatImpact.checked : true; // NEW
 
         for (let y = checkRadius; y < rows - checkRadius; y++) {
             for (let x = checkRadius; x < cols - checkRadius; x++) {
                 let i = y * cols + x;
-                // It's a target if it's an obstacle OR a boat
-                const isBoat = boatMask && boatMask[i] === 1;
-                const isTarget = obstacles[i] === 1 || isBoat;
-
-                if (isTarget) {
-                    // Filter boat impact if not wanted (UI toggle)
-                    if (isBoat && !showBoatImpact) continue;
+                if (obstacles[i] === 1) { // It's a coast/obstacle
                     let maxLocalDensity = 0;
                     for (let oy = -checkRadius; oy <= checkRadius; oy++) {
                         for (let ox = -checkRadius; ox <= checkRadius; ox++) {
@@ -3907,3 +3889,71 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
 });
+function renderMaterialsPage() {
+    const appConfigData = window.BUSINESS_CONFIG;
+    if (!appConfigData || !appConfigData.costs) return;
+
+    const nInput = document.getElementById('mat-num-cells');
+    const sectionsInput = document.getElementById('mat-num-sections');
+
+    if (nInput && !nInput._manuallyEdited) {
+        const estCells = document.getElementById('est-cells');
+        if (estCells) {
+            const match = estCells.textContent.match(/(\d+)/);
+            if (match) nInput.value = match[1];
+        }
+    }
+
+    const n = parseInt(nInput?.value) || 0;
+    const sections = parseInt(sectionsInput?.value) || 1;
+
+    const hw = appConfigData.costs.hardware || {
+        anchor_unit_ht: 45.00,
+        rope_per_meter_ht: 1.20,
+        carabiner_unit_ht: 2.50,
+        float_unit_ht: 15.00,
+        weight_per_cell_kg: 2.5
+    };
+
+    const cellUnitPrice = appConfigData.costs.cell_unit_buy_ht || 150;
+
+    const ropeLength = Math.ceil(n * 1.2 * 1.2); 
+    const numAnchors = sections * 2;
+    const numCarabiners = n * 2 + sections * 2;
+    const numFloats = Math.ceil(n / 3); 
+
+    const items = [
+        { name: 'Cellules Filtrantes ABSORB (1m)', qty: n, unit: cellUnitPrice, total: n * cellUnitPrice },
+        { name: 'Cordage s�curit� (Polypropyl�ne)', qty: ropeLength, unit: hw.rope_per_meter_ht, total: ropeLength * hw.rope_per_meter_ht },
+        { name: 'Ancrages / Poids de lestage', qty: numAnchors, unit: hw.anchor_unit_ht, total: numAnchors * hw.anchor_unit_ht },
+        { name: 'Mousquetons Inox', qty: numCarabiners, unit: hw.carabiner_unit_ht, total: numCarabiners * hw.carabiner_unit_ht },
+        { name: 'Flotteurs de surface', qty: numFloats, unit: hw.float_unit_ht, total: numFloats * hw.float_unit_ht }
+    ];
+
+    const body = document.getElementById('mat-table-body');
+    if (body) {
+        body.innerHTML = items.map(item => 
+            <tr>
+                <td style="padding: 12px; border-bottom: 1px solid var(--clr-border);"></td>
+                <td style="text-align: center; padding: 12px; border-bottom: 1px solid var(--clr-border);"></td>
+                <td style="text-align: right; padding: 12px; border-bottom: 1px solid var(--clr-border);"></td>
+                <td style="text-align: right; padding: 12px; border-bottom: 1px solid var(--clr-border); font-weight: 600; color: var(--clr-primary);"></td>
+            </tr>
+        ).join('');
+    }
+
+    const totalHT = items.reduce((sum, item) => sum + item.total, 0);
+    const totalWeight = n * hw.weight_per_cell_kg;
+
+    const totalHTLabel = document.getElementById('mat-total-ht');
+    const totalWeightLabel = document.getElementById('mat-total-weight');
+    const ropeLengthLabel = document.getElementById('mat-rope-length');
+
+    if (totalHTLabel) totalHTLabel.textContent = fmtCurrency(totalHT);
+    if (totalWeightLabel) totalWeightLabel.textContent = totalWeight.toFixed(1) + " kg";
+    if (ropeLengthLabel) ropeLengthLabel.textContent = ropeLength + " m";
+}
+
+window.renderMaterialsPage = renderMaterialsPage;
+
+

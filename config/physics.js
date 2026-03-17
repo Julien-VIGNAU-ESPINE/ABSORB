@@ -13,8 +13,8 @@ window.PHYSICS_CONFIG = {
 
     // Pollution Physics
     pollution: {
-        speed_scale: 10.0,      // Velocity field scaling
-        diffusion_mix: 0.08,   // Base diffusion rate
+        speed_scale: 20.0,      // Velocity field scaling
+        diffusion_mix: 0.18,   // Base diffusion rate
         decay_rate: 0.999,     // Percentage of pollution remaining per frame
         min_threshold: 0.0001, // Pollution below this is cleared
         impact_threshold: 0.015,
