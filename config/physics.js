@@ -18,12 +18,13 @@ window.PHYSICS_CONFIG = {
         decay_rate: 0.999,     // Percentage of pollution remaining per frame
         min_threshold: 0.0001, // Pollution below this is cleared
         impact_threshold: 0.015,
+        boat_emission: 0.00015, // Small constant emission from boat zones
         check_radius_cells: 2  // For coastal detection
     },
 
     // Cell Effectiveness
     cells: {
-        base_efficiency: 0.20,
+        base_efficiency: 0.10,
         radius_multiplier: 3.5,
         dynamic_strength_multiplier: 1.5,
         source_resistance_penalty: 0.95,

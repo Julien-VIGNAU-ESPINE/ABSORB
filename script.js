@@ -30,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const cbCoastHeatmap = document.getElementById('cb-coast-heatmap');
     const cbShowHeatmap = document.getElementById('cb-show-heatmap');
     const cbCumulativeHeatmap = document.getElementById('cb-cumulative-heatmap');
-    const cbShowBoatImpact = document.getElementById('cb-show-boat-impact');
     const simSpeedInput = document.getElementById('sim-speed');
     const simSpeedNum = document.getElementById('sim-speed-num');
 
@@ -313,12 +312,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         renderCanvas();
     });
-    if (cbShowBoatImpact) cbShowBoatImpact.addEventListener('change', () => {
-        if (!simulationInterval && pollutionState.density) {
-            runPollutionSimulation();
-        }
-        renderCanvas();
-    });
 
     // Sub-tabs Simulation
     const btnSubTabWater = document.getElementById('btn-sub-tab-water');
@@ -410,7 +403,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (cbCoastHeatmap && data.adjustments.coastHeatmap !== undefined) cbCoastHeatmap.checked = data.adjustments.coastHeatmap;
                     if (cbShowHeatmap && data.adjustments.showHeatmap !== undefined) cbShowHeatmap.checked = data.adjustments.showHeatmap;
                     if (cbCumulativeHeatmap && data.adjustments.cumulativeHeatmap !== undefined) cbCumulativeHeatmap.checked = data.adjustments.cumulativeHeatmap;
-                    if (cbShowBoatImpact && data.adjustments.showBoatImpact !== undefined) cbShowBoatImpact.checked = data.adjustments.showBoatImpact;
                     if (simSpeedInput && data.adjustments.simSpeed !== undefined) {
                         simSpeedInput.value = data.adjustments.simSpeed;
                         if (simSpeedNum) simSpeedNum.value = data.adjustments.simSpeed;
@@ -486,7 +478,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     coastHeatmap: cbCoastHeatmap ? cbCoastHeatmap.checked : false,
                     showHeatmap: cbShowHeatmap ? cbShowHeatmap.checked : true,
                     cumulativeHeatmap: cbCumulativeHeatmap ? cbCumulativeHeatmap.checked : false,
-                    showBoatImpact: cbShowBoatImpact ? cbShowBoatImpact.checked : true,
                     simSpeed: simSpeedInput ? simSpeedInput.value : "1"
                 },
                 pixelsPerMeter: rulerState.pixelsPerMeter,
@@ -2685,8 +2676,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Generate source areas per-zone so each zone can have its own intensity
         zones.forEach(zone => {
-            if (zone.type !== 'polluante') return;
-            const zoneIntensity = zone.pollutionIntensity !== undefined ? zone.pollutionIntensity : 1.2;
+            const isPollutant = zone.type === 'polluante';
+            const isBoat = zone.type === 'bateaux';
+            if (!isPollutant && !isBoat) return;
+
+            // Use specific intensity for sources, or a tiny emission for boats
+            const zoneIntensity = isPollutant
+                ? (zone.pollutionIntensity !== undefined ? zone.pollutionIntensity : 1.2)
+                : (PHYSICS_CONFIG.pollution.boat_emission || 0.005);
 
             offCtx.resetTransform();
             offCtx.clearRect(0, 0, cols, rows);
@@ -3009,18 +3006,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const isPersistent = cbPersistImpact && cbPersistImpact.checked;
         const useCoastHeatmap = cbCoastHeatmap && cbCoastHeatmap.checked;
-        const showBoatImpact = cbShowBoatImpact ? cbShowBoatImpact.checked : true; // NEW
 
         for (let y = checkRadius; y < rows - checkRadius; y++) {
             for (let x = checkRadius; x < cols - checkRadius; x++) {
                 let i = y * cols + x;
-                // It's a target if it's an obstacle OR a boat
-                const isBoat = boatMask && boatMask[i] === 1;
-                const isTarget = obstacles[i] === 1 || isBoat;
-
-                if (isTarget) {
-                    // Filter boat impact if not wanted (UI toggle)
-                    if (isBoat && !showBoatImpact) continue;
+                // Only consider non-navigable obstacles (coasts) for impact.
+                // Boats count as water in propagation, so they shouldn't show impact.
+                if (obstacles[i] === 1) {
                     let maxLocalDensity = 0;
                     for (let oy = -checkRadius; oy <= checkRadius; oy++) {
                         for (let ox = -checkRadius; ox <= checkRadius; ox++) {
@@ -3262,7 +3254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Si taux < 20% : on affiche un avertissement de sous-dimensionnement
         // ═══════════════════════════════════════════════════════════
         const rawFinalCells = Math.max(cellsFromVolume, cellsFromSpacing || cellsFromVolume);
-        const finalCells = Math.ceil(rawFinalCells / 1.5);
+        const finalCells = Math.ceil(rawFinalCells);
         // Min = purely volumetric (no spatial constraint)
         const minCells = cellsFromVolume > 0 ? cellsFromVolume : (cellsFromSpacing > 0 ? Math.ceil(cellsFromSpacing * 0.5) : 1);
         // Max = 2 fois la quantité recommandée ("ce qu'il faut pour la surface")
